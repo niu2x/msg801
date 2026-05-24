@@ -6,9 +6,11 @@ add_executable(msg801-cli
 
 target_link_libraries(msg801-cli PRIVATE
     msg801
+    Boost::program_options
 )
 
 set_target_properties(msg801-cli PROPERTIES
+    OUTPUT_NAME "msg801"
     BUILD_RPATH "${CMAKE_BINARY_DIR}/lib"
     INSTALL_RPATH "$ORIGIN/../${CMAKE_INSTALL_LIBDIR}"
 )

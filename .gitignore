@@ -2,4 +2,5 @@ build/
 dist/
 .cache/
 compile_commands.json
+.env
 *~

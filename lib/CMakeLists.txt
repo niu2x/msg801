@@ -18,6 +18,8 @@ set_target_properties(msg801
         SOVERSION ${PROJECT_VERSION_MAJOR}
 )
 
+target_link_libraries(msg801 PUBLIC Boost::boost)
+
 cxx_project_preset(msg801)
 warning_as_error_enable(msg801)
 

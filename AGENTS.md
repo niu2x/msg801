@@ -1,6 +1,7 @@
 # msg801
 
 - C++20
+- 依赖 Boost >= 1.89 (program_options, asio header-only)
 - 提交日志必须用中文
 
 ## 命名
