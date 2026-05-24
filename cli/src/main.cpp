@@ -2,9 +2,12 @@
 #include <boost/version.hpp>
 
 #include <cstdlib>
+#include <cstring>
 #include <iostream>
+#include <vector>
 
 #include "msg801/lib.hpp"
+#include "msg801/udp_sender.hpp"
 
 namespace po = boost::program_options;
 
@@ -15,7 +18,55 @@ static int cmd_about()
     return EXIT_SUCCESS;
 }
 
-int main(int argc, char* argv[])
+static int cmd_send(int argc, char* argv[])
+{
+    po::options_description desc("Options");
+    desc.add_options()
+        ("help,h", "Show help")
+        ("ip", po::value<std::string>()->required(), "Target IP address")
+        ("port", po::value<uint16_t>()->required(), "Target port")
+        ("message", po::value<std::string>()->required(), "Message to send")
+    ;
+
+    po::positional_options_description pos;
+    pos.add("ip", 1);
+    pos.add("port", 1);
+    pos.add("message", 1);
+
+    po::variables_map vm;
+    po::store(po::command_line_parser(std::vector<std::string>(argv, argv + argc))
+        .options(desc)
+        .positional(pos)
+        .run(), vm);
+
+    if (vm.count("help")) {
+        std::cout << "Usage: msg801 send <ip> <port> <message>\n\n" << desc << '\n';
+        return EXIT_SUCCESS;
+    }
+
+    try {
+      po::notify(vm);
+    } catch (const po::required_option &) {
+      std::cout << "Usage: msg801 send <ip> <port> <message>\n\n"
+                << desc << '\n';
+      return EXIT_FAILURE;
+    }
+
+    auto ip = vm["ip"].as<std::string>();
+    auto port = vm["port"].as<uint16_t>();
+    auto message = vm["message"].as<std::string>();
+
+    auto result = msg801::send_udp(ip, port, message);
+    if (!result.success) {
+        std::cerr << "Error: " << result.error << '\n';
+        return EXIT_FAILURE;
+    }
+
+    std::cout << "Sent\n";
+    return EXIT_SUCCESS;
+}
+
+static int cmd_global(int argc, char* argv[])
 {
     po::options_description desc("Options");
     desc.add_options()
@@ -28,7 +79,10 @@ int main(int argc, char* argv[])
     po::notify(vm);
 
     if (vm.count("help")) {
-        std::cout << desc << '\n';
+        std::cout << "Usage: msg801 [--help] [--about] <command>\n\n"
+                  << desc << "\n\n"
+                  << "Commands:\n"
+                  << "  send    Send a UDP message to ip:port\n";
         return EXIT_SUCCESS;
     }
 
@@ -38,4 +92,13 @@ int main(int argc, char* argv[])
 
     std::cout << msg801::greeting() << '\n';
     return EXIT_SUCCESS;
+}
+
+int main(int argc, char* argv[])
+{
+    if (argc >= 2 && std::strcmp(argv[1], "send") == 0) {
+        return cmd_send(argc - 2, argv + 2);
+    }
+
+    return cmd_global(argc, argv);
 }

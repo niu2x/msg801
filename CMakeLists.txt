@@ -7,6 +7,7 @@ include(cxx_project)
 include(warning_as_error)
 
 find_package(Boost 1.89 REQUIRED COMPONENTS program_options)
+find_package(Threads REQUIRED)
 
 add_subdirectory(lib)
 add_subdirectory(cli)
