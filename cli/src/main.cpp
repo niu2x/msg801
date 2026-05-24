@@ -108,8 +108,8 @@ static int cmd_tunnel(int argc, char* argv[])
         ("help,h", "Show help")
         ("listen", po::value<std::string>()->required(), "Listen address (e.g. 0.0.0.0:8080)")
         ("remote", po::value<std::string>()->required(), "Remote address (e.g. 10.0.0.1:80)")
-        ("xor-key", po::value<std::string>(), "XOR encryption key")
-        ("xor-reverse", "Reverse encrypt/decrypt roles (for exit node)")
+        ("cfb-key", po::value<std::string>(), "CFB encryption key")
+        ("cfb-reverse", "Reverse encrypt/decrypt roles (for exit node)")
     ;
 
     po::variables_map vm;
@@ -119,7 +119,7 @@ static int cmd_tunnel(int argc, char* argv[])
 
     if (vm.count("help")) {
         std::cout << "Usage: msg801 tunnel --listen <ip:port> --remote <ip:port>\n"
-                     "       [--xor-key <key>] [--xor-reverse]\n\n"
+                     "       [--cfb-key <key>] [--cfb-reverse]\n\n"
                   << desc << '\n';
         return EXIT_SUCCESS;
     }
@@ -128,13 +128,13 @@ static int cmd_tunnel(int argc, char* argv[])
         po::notify(vm);
     } catch (const po::required_option&) {
         std::cout << "Usage: msg801 tunnel --listen <ip:port> --remote <ip:port>\n"
-                     "       [--xor-key <key>] [--xor-reverse]\n\n"
+                     "       [--cfb-key <key>] [--cfb-reverse]\n\n"
                   << desc << '\n';
         return EXIT_FAILURE;
     }
 
-    auto key = vm.count("xor-key") ? vm["xor-key"].as<std::string>() : std::string{};
-    bool rev = vm.count("xor-reverse") > 0;
+    auto key = vm.count("cfb-key") ? vm["cfb-key"].as<std::string>() : std::string{};
+    bool rev = vm.count("cfb-reverse") > 0;
     msg801::run_tunnel(vm["listen"].as<std::string>(), vm["remote"].as<std::string>(), key, rev);
     return EXIT_SUCCESS;
 }

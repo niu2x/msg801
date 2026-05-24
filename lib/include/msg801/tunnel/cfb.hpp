@@ -14,9 +14,9 @@ namespace msg801::tunnel {
 ///
 /// reverse=true 时交换 on_local / on_remote 的加解密角色，
 /// 用于 A→B→C 双跳场景（A 为入口加密，B 为出口解密）。
-class XorProcessor : public Processor {
+class CfbProcessor : public Processor {
 public:
-    explicit XorProcessor(std::span<const char> key, bool reverse = false)
+    explicit CfbProcessor(std::span<const char> key, bool reverse = false)
         : enc_iv_(key.begin(), key.end())
         , dec_iv_(key.begin(), key.end())
         , reverse_(reverse)

@@ -10,7 +10,7 @@
 namespace msg801 {
 
 MSG801_API void run_tunnel(std::string_view listen_addr, std::string_view remote_addr,
-                           std::string_view xor_key = {},
-                           bool xor_reverse = false);
+                           std::string_view cfb_key = {},
+                           bool cfb_reverse = false);
 
 } // namespace msg801

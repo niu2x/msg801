@@ -250,7 +250,7 @@ XOR_DECODE_PORT=19996
 XOR_LISTEN_PORT=${4:-19995}
 XOR_KEY="${5:-my-secret-key}"
 
-if "$TUNNEL_BIN" tunnel --help 2>/dev/null | grep -q xor-key; then
+if "$TUNNEL_BIN" tunnel --help 2>/dev/null | grep -q cfb-key; then
     start_echo "$XOR_ECHO_PORT"
     sleep 0.5
 
@@ -258,14 +258,13 @@ if "$TUNNEL_BIN" tunnel --help 2>/dev/null | grep -q xor-key; then
     "$TUNNEL_BIN" tunnel \
         --listen "127.0.0.1:$XOR_DECODE_PORT" \
         --remote "127.0.0.1:$XOR_ECHO_PORT" \
-        --xor-key "$XOR_KEY" --xor-reverse &
-    sleep 0.5
+        --cfb-key "$XOR_KEY" --cfb-reverse &
 
-    # Tunnel A: encrypt side (XOR encode), listen external → B
+    # Tunnel A: encrypt side (CFB encode), listen external → B
     "$TUNNEL_BIN" tunnel \
         --listen "127.0.0.1:$XOR_LISTEN_PORT" \
         --remote "127.0.0.1:$XOR_DECODE_PORT" \
-        --xor-key "$XOR_KEY" &
+        --cfb-key "$XOR_KEY" &
     sleep 0.5
 
     run_xor_tests
