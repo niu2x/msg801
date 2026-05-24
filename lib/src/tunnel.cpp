@@ -48,6 +48,12 @@ void log_conn_close(uint64_t id, uint64_t rx, uint64_t tx, double dur_sec)
                  now_ms(), id, rx, tx, dur_sec);
 }
 
+void log_stat(uint64_t id, double rx_rate, double tx_rate)
+{
+    spdlog::info(R"({{"t":{},"ev":"stat","id":{},"rx_rate":{:.0},"tx_rate":{:.0}}})",
+                 now_ms(), id, rx_rate, tx_rate);
+}
+
 // ---- Session state ----
 
 struct SessionState : std::enable_shared_from_this<SessionState> {
@@ -56,6 +62,9 @@ struct SessionState : std::enable_shared_from_this<SessionState> {
     tcp::socket         remote_sock;
     uint64_t            rx_bytes = 0;
     uint64_t            tx_bytes = 0;
+    uint64_t            last_stat_rx = 0;
+    uint64_t            last_stat_tx = 0;
+    std::chrono::steady_clock::time_point last_stat_time;
     bool                local_eof = false;
     bool                remote_eof = false;
     bool                closed = false;
@@ -69,6 +78,7 @@ struct SessionState : std::enable_shared_from_this<SessionState> {
         : id(0)
         , local_sock(std::move(local))
         , remote_sock(ctx)
+        , last_stat_time(std::chrono::steady_clock::now())
         , start(std::chrono::steady_clock::now())
         , chain(std::move(proc_chain))
     {}
@@ -194,6 +204,30 @@ asio::awaitable<void> read_remote(SessionPtr s)
     }
 }
 
+// ---- Stat loop ----
+
+asio::awaitable<void> stat_loop(SessionPtr s)
+{
+    asio::steady_timer timer{co_await asio::this_coro::executor};
+    while (true) {
+        timer.expires_after(5s);
+        boost::system::error_code ec;
+        co_await timer.async_wait(redirect_error(use_awaitable, ec));
+        if (ec || s->closed) co_return;
+
+        auto now = std::chrono::steady_clock::now();
+        auto dt = std::chrono::duration<double>(now - s->last_stat_time).count();
+        if (dt > 0) {
+            double rx_rate = (s->rx_bytes - s->last_stat_rx) / dt;
+            double tx_rate = (s->tx_bytes - s->last_stat_tx) / dt;
+            s->last_stat_rx = s->rx_bytes;
+            s->last_stat_tx = s->tx_bytes;
+            s->last_stat_time = now;
+            log_stat(s->id, rx_rate, tx_rate);
+        }
+    }
+}
+
 // ---- Session launcher ----
 
 void start_session(SessionPtr s)
@@ -209,6 +243,7 @@ void start_session(SessionPtr s)
 
     co_spawn(s->local_sock.get_executor(), read_local(s), on_done);
     co_spawn(s->remote_sock.get_executor(), read_remote(s), on_done);
+    co_spawn(s->local_sock.get_executor(), stat_loop(s), detached);
 }
 
 asio::awaitable<void> do_accept(asio::io_context& ctx,
