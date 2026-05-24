@@ -5,6 +5,7 @@ add_library(msg801 SHARED
     src/lib.cpp
     src/udp_sender.cpp
     src/udp_server.cpp
+    src/tunnel.cpp
 )
 
 target_include_directories(msg801

@@ -9,6 +9,7 @@
 #include "msg801/lib.hpp"
 #include "msg801/udp_sender.hpp"
 #include "msg801/udp_server.hpp"
+#include "msg801/tunnel.hpp"
 
 namespace po = boost::program_options;
 
@@ -100,6 +101,38 @@ static int cmd_serve(int argc, char* argv[])
     return EXIT_SUCCESS;
 }
 
+static int cmd_tunnel(int argc, char* argv[])
+{
+    po::options_description desc("Options");
+    desc.add_options()
+        ("help,h", "Show help")
+        ("listen", po::value<std::string>()->required(), "Listen address (e.g. 0.0.0.0:8080)")
+        ("remote", po::value<std::string>()->required(), "Remote address (e.g. 10.0.0.1:80)")
+    ;
+
+    po::variables_map vm;
+    po::store(po::command_line_parser(std::vector<std::string>(argv, argv + argc))
+        .options(desc)
+        .run(), vm);
+
+    if (vm.count("help")) {
+        std::cout << "Usage: msg801 tunnel --listen <ip:port> --remote <ip:port>\n\n"
+                  << desc << '\n';
+        return EXIT_SUCCESS;
+    }
+
+    try {
+        po::notify(vm);
+    } catch (const po::required_option&) {
+        std::cout << "Usage: msg801 tunnel --listen <ip:port> --remote <ip:port>\n\n"
+                  << desc << '\n';
+        return EXIT_FAILURE;
+    }
+
+    msg801::run_tunnel(vm["listen"].as<std::string>(), vm["remote"].as<std::string>());
+    return EXIT_SUCCESS;
+}
+
 static int cmd_global(int argc, char* argv[])
 {
     po::options_description desc("Options");
@@ -117,7 +150,8 @@ static int cmd_global(int argc, char* argv[])
                   << desc << "\n\n"
                   << "Commands:\n"
                   << "  send    Send a UDP message to ip:port\n"
-                  << "  serve   Listen for UDP messages on a port\n";
+                  << "  serve   Listen for UDP messages on a port\n"
+                  << "  tunnel  TCP tunnel: listen -> forward to remote\n";
         return EXIT_SUCCESS;
     }
 
@@ -137,6 +171,10 @@ int main(int argc, char* argv[])
 
     if (argc >= 2 && std::strcmp(argv[1], "serve") == 0) {
         return cmd_serve(argc - 2, argv + 2);
+    }
+
+    if (argc >= 2 && std::strcmp(argv[1], "tunnel") == 0) {
+        return cmd_tunnel(argc - 2, argv + 2);
     }
 
     return cmd_global(argc, argv);
