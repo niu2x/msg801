@@ -4,12 +4,15 @@ include(CMakePackageConfigHelpers)
 add_library(msg801 SHARED
     src/lib.cpp
     src/udp_sender.cpp
+    src/udp_server.cpp
 )
 
 target_include_directories(msg801
     PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+    PRIVATE
+        ${CMAKE_SOURCE_DIR}/thirdparty/spdlog
 )
 
 set_target_properties(msg801
