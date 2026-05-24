@@ -9,76 +9,83 @@ namespace msg801::tunnel {
 
 /// Stream cipher using CFB (Cipher Feedback) mode.
 ///
-/// - key 作为初始 IV
-/// - 每字节: output = input ^ iv[pos]; 然后用 **密文字节** 更新 IV
-/// - 两端（encrypt/decrypt）用同样的密文字节更新 IV，保证状态同步
-/// - 无周期性模式，每个密文字节影响后续所有 IV 状态
+/// 内部维护两套独立 IV：encrypt（local→remote）和 decrypt（remote→local）。
+/// 方向隔离，即使一个方向的密文被篡改，也不影响另一方向的密钥流。
 ///
 /// reverse=true 时交换 on_local / on_remote 的加解密角色，
 /// 用于 A→B→C 双跳场景（A 为入口加密，B 为出口解密）。
 class XorProcessor : public Processor {
 public:
     explicit XorProcessor(std::span<const char> key, bool reverse = false)
-        : iv_(key.begin(), key.end()), reverse_(reverse)
+        : enc_iv_(key.begin(), key.end())
+        , dec_iv_(key.begin(), key.end())
+        , reverse_(reverse)
     {
-        while (iv_.size() < 8)
-            iv_.push_back(static_cast<char>(iv_.size()));
+        while (enc_iv_.size() < 8) {
+            enc_iv_.push_back(static_cast<char>(enc_iv_.size()));
+            dec_iv_.push_back(static_cast<char>(dec_iv_.size()));
+        }
     }
 
     void on_local_data(std::span<const char> input,
                        std::vector<DataBuffer>& output) override
     {
         if (reverse_)
-            decrypt(input, output);
+            decrypt(input, output, dec_iv_);
         else
-            encrypt(input, output);
+            encrypt(input, output, enc_iv_);
     }
 
     void on_remote_data(std::span<const char> input,
                         std::vector<DataBuffer>& output) override
     {
         if (reverse_)
-            encrypt(input, output);
+            encrypt(input, output, enc_iv_);
         else
-            decrypt(input, output);
+            decrypt(input, output, dec_iv_);
     }
 
 private:
-    std::vector<char> iv_;
+    std::vector<char> enc_iv_;
+    std::vector<char> dec_iv_;
     bool reverse_;
 
-    void mix(char cipher, size_t pos)
+    void mix(char cipher, std::vector<char>& iv, size_t pos)
     {
-        iv_[pos] += cipher;
-        iv_[(pos + 1) % iv_.size()] ^= cipher;
+        iv[pos] += cipher;
+        iv[(pos + 1) % iv.size()] ^= cipher;
     }
 
+    /// 加密: input=明文, output=密文, iv 用密文字节更新
     void encrypt(std::span<const char> input,
-                 std::vector<DataBuffer>& output)
+                 std::vector<DataBuffer>& output,
+                 std::vector<char>& iv)
     {
         auto buf = DataBuffer{
             .data = std::vector<char>(input.begin(), input.end())
         };
         for (size_t i = 0; i < buf.data.size(); ++i) {
-            size_t pos = i % iv_.size();
-            char cipher = buf.data[i] ^ iv_[pos];
+            size_t pos = i % iv.size();
+            char cipher = buf.data[i] ^ iv[pos];
             buf.data[i] = cipher;
-            mix(cipher, pos);
+            mix(cipher, iv, pos);
         }
         output.push_back(std::move(buf));
     }
 
+    /// 解密: input=密文, output=明文, iv 用原始输入字节（密文）更新
     void decrypt(std::span<const char> input,
-                 std::vector<DataBuffer>& output)
+                 std::vector<DataBuffer>& output,
+                 std::vector<char>& iv)
     {
         auto buf = DataBuffer{
             .data = std::vector<char>(input.begin(), input.end())
         };
         for (size_t i = 0; i < buf.data.size(); ++i) {
-            size_t pos = i % iv_.size();
-            char cipher = buf.data[i];           // input IS ciphertext
-            buf.data[i] ^= iv_[pos];             // = plaintext
-            mix(cipher, pos);                    // feed ciphertext back
+            size_t pos = i % iv.size();
+            char cipher = buf.data[i];      // 输入就是密文
+            buf.data[i] ^= iv[pos];          // 还原明文
+            mix(cipher, iv, pos);            // 用密文字节更新 IV
         }
         output.push_back(std::move(buf));
     }

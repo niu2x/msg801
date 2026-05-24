@@ -197,6 +197,40 @@ run_xor_tests() {
     local ok6=true
     result=$(xor_send_recv "ping")
     check "xor tunnel still alive" "[[ '$result' = 'ping' ]]"
+
+    echo "=== xor batch pipelined: 20 chunks without waiting ==="
+    local ok7=true
+    python3 -c "
+import socket, time, sys
+s = socket.socket()
+s.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+s.settimeout(5)
+s.connect(('127.0.0.1', $XOR_LISTEN_PORT))
+
+chunks = []
+for i in range(20):
+    chunk = b'chunk%02d_' % i + b'x' * 56
+    chunks.append(chunk)
+
+for c in chunks:
+    s.sendall(c)
+    time.sleep(0.002)
+
+resp = b''
+while len(resp) < sum(len(c) for c in chunks):
+    d = s.recv(65536)
+    if not d: break
+    resp += d
+s.close()
+
+pos = 0
+for c in chunks:
+    if resp[pos:pos+len(c)] != c:
+        sys.exit(1)
+    pos += len(c)
+sys.exit(0)
+" || ok7=false
+    check "xor 20 pipelined chunks" "[[ $ok7 = true ]]"
 }
 
 # ---- main ----
