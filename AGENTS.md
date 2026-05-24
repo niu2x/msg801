@@ -3,6 +3,7 @@
 - C++20
 - 依赖 Boost >= 1.89 (program_options, asio header-only) 和 spdlog (header-only)
 - 提交日志必须用中文
+- 不要自动 commit，只在用户明确说 `/commit` 时才 commit
 
 ## 命名
 
