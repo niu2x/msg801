@@ -27,8 +27,9 @@ check() {
 # ---- helpers: pure Python ----
 
 start_echo() {
+    local port="$1"
     python3 -c "
-import socket, threading
+import socket, threading, sys
 def echo(s):
     while True:
         d = s.recv(65536)
@@ -37,23 +38,23 @@ def echo(s):
     s.close()
 s = socket.socket()
 s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-s.bind(('127.0.0.1', $ECHO_PORT))
+s.bind(('127.0.0.1', $port))
 s.listen(50)
-import sys; sys.stderr.write('echo ready\n'); sys.stderr.flush()
+sys.stderr.write('echo ready on $port\n'); sys.stderr.flush()
 while True:
     c, _ = s.accept()
     threading.Thread(target=echo, args=(c,), daemon=True).start()
 " &
 }
 
-# send data through tunnel, return echoed response
+# send data through tunnel on TUNNEL_PORT, return echoed response
 send_recv() {
     printf '%s' "$1" | python3 -c "
 import socket, sys
 data = sys.stdin.buffer.read()
 s = socket.socket()
 s.settimeout(5)
-s.connect(('127.0.0.1', $TUNNEL_PORT))
+s.connect(('127.0.0.1', int(sys.argv[1])))
 s.sendall(data)
 s.shutdown(socket.SHUT_WR)
 resp = b''
@@ -63,7 +64,7 @@ while True:
     resp += chunk
 s.close()
 sys.stdout.buffer.write(resp)
-"
+" "$TUNNEL_PORT"
 }
 
 concurrent_test() {
@@ -87,7 +88,7 @@ concurrent_test() {
     return "$ok"
 }
 
-# ---- test cases ----
+# ---- standard tests (one tunnel, no XOR) ----
 
 run_tests() {
     echo "=== 1. short message ==="
@@ -140,20 +141,101 @@ run_tests() {
     for pid in "${pids[@]}"; do wait "$pid" 2>/dev/null || true; done
     check "20 rapid connect/disconnect" "true"
 
-    echo "=== 10. tunnel still alive after tests ==="
+    echo "=== 10. tunnel still alive ==="
     result=$(send_recv "ping")
     check "tunnel still responsive" "[[ '$result' = 'ping' ]]"
 }
 
+# ---- XOR two-hop test: A(encrypt) → B(decrypt) → echo ----
+
+xor_send_recv() {
+    printf '%s' "$1" | python3 -c "
+import socket, sys
+data = sys.stdin.buffer.read()
+s = socket.socket()
+s.settimeout(5)
+s.connect(('127.0.0.1', int(sys.argv[1])))
+s.sendall(data)
+s.shutdown(socket.SHUT_WR)
+resp = b''
+while True:
+    chunk = s.recv(65536)
+    if not chunk: break
+    resp += chunk
+s.close()
+sys.stdout.buffer.write(resp)
+" "$XOR_LISTEN_PORT"
+}
+
+run_xor_tests() {
+    echo ""
+    echo "--- XOR two-hop tests (A encrypt → B decrypt) ---"
+
+    local ok1=true
+    result=$(xor_send_recv "hello xor")
+    check "xor short message" "[[ '$result' = 'hello xor' ]]"
+
+    local ok2=true
+    result=$(xor_send_recv "")
+    check "xor empty message" "[[ '$result' = '' ]]"
+
+    local ok3=true
+    data=$(head -c 10240 /dev/urandom | base64 -w0)
+    result=$(xor_send_recv "$data")
+    check "xor 10KB payload" "[[ '$result' = '$data' ]]"
+
+    local ok4=true
+    data=$(head -c 65536 /dev/urandom | base64 -w0)
+    result=$(xor_send_recv "$data")
+    check "xor 64KB payload" "[[ '$result' = '$data' ]]"
+
+    local ok5=true
+    data=$(head -c 1024 /dev/urandom | base64 -w0)
+    concurrent_test 16 "$data" || ok5=false
+    check "xor 16 concurrent 1KB" "[[ '$ok5' = 'true' ]]"
+
+    local ok6=true
+    result=$(xor_send_recv "ping")
+    check "xor tunnel still alive" "[[ '$result' = 'ping' ]]"
+}
+
 # ---- main ----
 
-start_echo
+# Standard tests
+start_echo "$ECHO_PORT"
 sleep 0.5
 
 "$TUNNEL_BIN" tunnel --listen "127.0.0.1:$TUNNEL_PORT" --remote "127.0.0.1:$ECHO_PORT" &
 sleep 0.5
 
 run_tests
+
+# XOR two-hop tests: A(encrypt) → B(decrypt) → echo
+XOR_ECHO_PORT=19997
+XOR_DECODE_PORT=19996
+XOR_LISTEN_PORT=${4:-19995}
+XOR_KEY="${5:-my-secret-key}"
+
+if "$TUNNEL_BIN" tunnel --help 2>/dev/null | grep -q xor-key; then
+    start_echo "$XOR_ECHO_PORT"
+    sleep 0.5
+
+    # Tunnel B: exit node (decrypt local, encrypt remote)
+    "$TUNNEL_BIN" tunnel \
+        --listen "127.0.0.1:$XOR_DECODE_PORT" \
+        --remote "127.0.0.1:$XOR_ECHO_PORT" \
+        --xor-key "$XOR_KEY" --xor-reverse &
+    sleep 0.5
+
+    # Tunnel A: encrypt side (XOR encode), listen external → B
+    "$TUNNEL_BIN" tunnel \
+        --listen "127.0.0.1:$XOR_LISTEN_PORT" \
+        --remote "127.0.0.1:$XOR_DECODE_PORT" \
+        --xor-key "$XOR_KEY" &
+    sleep 0.5
+
+    run_xor_tests
+fi
 
 echo ""
 echo "=== result: $PASS passed, $FAIL failed ==="

@@ -1,5 +1,8 @@
 #include "msg801/tunnel.hpp"
 
+#include "msg801/tunnel/xor.hpp"
+#include "msg801/tunnel/identity.hpp"
+
 #include <boost/asio.hpp>
 #include <boost/asio/co_spawn.hpp>
 #include <boost/asio/detached.hpp>
@@ -248,7 +251,9 @@ void start_session(SessionPtr s)
 
 asio::awaitable<void> do_accept(asio::io_context& ctx,
                                 tcp::acceptor acceptor,
-                                tcp::endpoint remote_ep)
+                                tcp::endpoint remote_ep,
+                                std::string xor_key,
+                                bool xor_reverse)
 {
     uint64_t next_id = 0;
     while (true) {
@@ -263,7 +268,11 @@ asio::awaitable<void> do_accept(asio::io_context& ctx,
         log_conn_new(id, local.remote_endpoint(), remote_ep);
 
         auto chain = tunnel::ProcessorChain{};
-        chain.add(std::make_unique<tunnel::IdentityProcessor>());
+        if (xor_key.empty()) {
+            chain.add(std::make_unique<tunnel::IdentityProcessor>());
+        } else {
+            chain.add(std::make_unique<tunnel::XorProcessor>(xor_key, xor_reverse));
+        }
 
         auto s = std::make_shared<SessionState>(ctx, std::move(local), std::move(chain));
         s->id = id;
@@ -284,7 +293,8 @@ asio::awaitable<void> do_accept(asio::io_context& ctx,
 
 // ---- Public API ----
 
-void run_tunnel(std::string_view listen_addr, std::string_view remote_addr)
+void run_tunnel(std::string_view listen_addr, std::string_view remote_addr,
+                std::string_view xor_key, bool xor_reverse)
 {
     auto colon1 = listen_addr.rfind(':');
     auto colon2 = remote_addr.rfind(':');
@@ -315,7 +325,8 @@ void run_tunnel(std::string_view listen_addr, std::string_view remote_addr)
     spdlog::info("Tunnel listening on {}:{} -> {}:{}",
                  listen_ip, listen_port, remote_ip, remote_port);
 
-    co_spawn(ctx, do_accept(ctx, std::move(acceptor), remote_ep), detached);
+    co_spawn(ctx, do_accept(ctx, std::move(acceptor), remote_ep,
+                           std::string(xor_key), xor_reverse), detached);
 
     ctx.run();
 }

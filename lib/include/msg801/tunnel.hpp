@@ -9,6 +9,8 @@
 
 namespace msg801 {
 
-MSG801_API void run_tunnel(std::string_view listen_addr, std::string_view remote_addr);
+MSG801_API void run_tunnel(std::string_view listen_addr, std::string_view remote_addr,
+                           std::string_view xor_key = {},
+                           bool xor_reverse = false);
 
 } // namespace msg801

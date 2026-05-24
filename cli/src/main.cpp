@@ -108,6 +108,8 @@ static int cmd_tunnel(int argc, char* argv[])
         ("help,h", "Show help")
         ("listen", po::value<std::string>()->required(), "Listen address (e.g. 0.0.0.0:8080)")
         ("remote", po::value<std::string>()->required(), "Remote address (e.g. 10.0.0.1:80)")
+        ("xor-key", po::value<std::string>(), "XOR encryption key")
+        ("xor-reverse", "Reverse encrypt/decrypt roles (for exit node)")
     ;
 
     po::variables_map vm;
@@ -116,7 +118,8 @@ static int cmd_tunnel(int argc, char* argv[])
         .run(), vm);
 
     if (vm.count("help")) {
-        std::cout << "Usage: msg801 tunnel --listen <ip:port> --remote <ip:port>\n\n"
+        std::cout << "Usage: msg801 tunnel --listen <ip:port> --remote <ip:port>\n"
+                     "       [--xor-key <key>] [--xor-reverse]\n\n"
                   << desc << '\n';
         return EXIT_SUCCESS;
     }
@@ -124,12 +127,15 @@ static int cmd_tunnel(int argc, char* argv[])
     try {
         po::notify(vm);
     } catch (const po::required_option&) {
-        std::cout << "Usage: msg801 tunnel --listen <ip:port> --remote <ip:port>\n\n"
+        std::cout << "Usage: msg801 tunnel --listen <ip:port> --remote <ip:port>\n"
+                     "       [--xor-key <key>] [--xor-reverse]\n\n"
                   << desc << '\n';
         return EXIT_FAILURE;
     }
 
-    msg801::run_tunnel(vm["listen"].as<std::string>(), vm["remote"].as<std::string>());
+    auto key = vm.count("xor-key") ? vm["xor-key"].as<std::string>() : std::string{};
+    bool rev = vm.count("xor-reverse") > 0;
+    msg801::run_tunnel(vm["listen"].as<std::string>(), vm["remote"].as<std::string>(), key, rev);
     return EXIT_SUCCESS;
 }
 
