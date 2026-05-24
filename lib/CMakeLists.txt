@@ -22,8 +22,6 @@ set_target_properties(msg801
         SOVERSION ${PROJECT_VERSION_MAJOR}
 )
 
-find_package(Threads REQUIRED)
-
 target_link_libraries(msg801 PUBLIC Boost::boost Threads::Threads)
 
 cxx_project_preset(msg801)
