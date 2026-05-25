@@ -6,14 +6,26 @@ add_library(msg801 SHARED
     src/udp_sender.cpp
     src/udp_server.cpp
     src/tunnel.cpp
+    src/cfb.cpp
+    src/padding.cpp
+    src/processor_chain.cpp
+    src/identity.cpp
 )
 
 target_include_directories(msg801
     PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
     PRIVATE
         ${CMAKE_SOURCE_DIR}/thirdparty/spdlog
+)
+
+include(GenerateExportHeader)
+generate_export_header(msg801
+    BASE_NAME msg801
+    EXPORT_MACRO_NAME MSG801_API
+    EXPORT_FILE_NAME ${CMAKE_CURRENT_BINARY_DIR}/include/msg801/export.hpp
 )
 
 set_target_properties(msg801
@@ -58,7 +70,6 @@ install(EXPORT msg801Targets
 )
 
 install(FILES
-    ${CMAKE_CURRENT_BINARY_DIR}/msg801-config.cmake
-    ${CMAKE_CURRENT_BINARY_DIR}/msg801-config-version.cmake
-    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/msg801
+    ${CMAKE_CURRENT_BINARY_DIR}/include/msg801/export.hpp
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/msg801
 )

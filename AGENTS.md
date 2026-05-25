@@ -15,3 +15,10 @@
 - **Getter**: 必须用 `get_xxx()` 前缀，不能用裸名词或属性名。例：`get_buffer()`、`get_width()`。错误：`buffer()`、`width()`。
 - **布尔 Getter**: 必须用 `is_xxx()` 前缀。例：`is_ready()`、`is_valid()`。错误：`ready()`、`valid()`。
 - **Setter**: 必须用 `set_xxx()` 前缀。例：`set_name()`、`set_value()`。错误：`name()`、`value()`。
+- **头文件**: 声明仅包含接口签名和短小的内联函数（如 getter/setter/简单工厂）。多行函数体必须放在 `lib/src/*.cpp` 中。
+- **头文件顺序**: `#include` 应按以下分组依次排列，组间空行分隔：
+    1. 标准 C 库（`<cstdint>`、`<cstdlib>` 等）
+    2. 标准 C++ 库（`<vector>`、`<string>`、`<memory>` 等）
+    3. 第三方库（`<boost/asio.hpp>`、`<spdlog/spdlog.h>` 等）
+    4. 项目自己的头文件（`"msg801/tunnel.hpp"` 等）
+- **Public 头文件引用**: `lib/include/msg801/` 下的头文件中，项目内部 `#include` 使用 `<>` 而非 `""`。例：`#include <msg801/export.hpp>`。
