@@ -22,7 +22,7 @@
 
 - C++20 编译器
 - CMake >= 3.16
-- Boost >= 1.89（`program_options`、`asio` 头文件模式）
+- Boost >= 1.83（`program_options`、`asio` 头文件模式）
 - pthreads
 
 项目内置了 `spdlog` 头文件依赖：`thirdparty/spdlog`。

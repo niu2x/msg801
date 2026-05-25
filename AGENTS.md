@@ -1,6 +1,6 @@
 # msg801
 
-- C++20, 依赖 Boost >= 1.89 和 spdlog (header-only)
+- C++20, 依赖 Boost >= 1.83 和 spdlog (header-only)
 - 提交日志必须用中文
 - 只在用户明确说 `/commit` 时才 commit
 
@@ -11,7 +11,11 @@ make build          # cmake configure + build + install to dist/
 bash scripts/test_tunnel.sh   # 全部集成测试（31 项）
 ```
 
-Boost 路径通过 `.env` 中 `Boost_ROOT` 指定，`Makefile` 自动加载。
+Boost 路径通过 `.env` 中 `Boost_ROOT` 指定，`Makefile` 自动加载。`.env` 示例：
+
+```
+Boost_ROOT=/path/to/boost-1.83.0
+```
 
 ## 项目结构
 
