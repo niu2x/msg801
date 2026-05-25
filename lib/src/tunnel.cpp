@@ -2,6 +2,7 @@
 
 #include "msg801/tunnel/cfb.hpp"
 #include "msg801/tunnel/identity.hpp"
+#include "msg801/tunnel/padding.hpp"
 
 #include <boost/asio.hpp>
 #include <boost/asio/co_spawn.hpp>
@@ -15,7 +16,11 @@
 #include <chrono>
 #include <cstdint>
 #include <memory>
+#include <optional>
+#include <sstream>
 #include <string>
+#include <unordered_map>
+#include <random>
 
 namespace msg801 {
 
@@ -28,6 +33,85 @@ using asio::co_spawn;
 using asio::detached;
 using asio::use_awaitable;
 using asio::redirect_error;
+
+std::vector<std::string> split(const std::string& s, char delim)
+{
+    std::vector<std::string> out;
+    std::stringstream ss(s);
+    std::string item;
+    while (std::getline(ss, item, delim)) {
+        out.push_back(item);
+    }
+    return out;
+}
+
+std::unordered_map<std::string, std::string> parse_kv(const std::string& s)
+{
+    std::unordered_map<std::string, std::string> out;
+    for (const auto& item : split(s, ',')) {
+        auto eq = item.find('=');
+        if (eq == std::string::npos) continue;
+        out[item.substr(0, eq)] = item.substr(eq + 1);
+    }
+    return out;
+}
+
+bool parse_bool(const std::string& v)
+{
+    return v == "1" || v == "true" || v == "yes";
+}
+
+std::optional<tunnel::ProcessorChain> build_processor_chain(const std::vector<std::string>& specs)
+{
+    tunnel::ProcessorChain chain;
+    if (specs.empty()) {
+        chain.add(std::make_unique<tunnel::IdentityProcessor>());
+        return chain;
+    }
+
+    for (const auto& spec : specs) {
+        auto colon = spec.find(':');
+        std::string name = colon == std::string::npos ? spec : spec.substr(0, colon);
+        std::string args = colon == std::string::npos ? std::string{} : spec.substr(colon + 1);
+        auto kv = parse_kv(args);
+
+        if (name == "identity") {
+            chain.add(std::make_unique<tunnel::IdentityProcessor>());
+        } else if (name == "cfb") {
+            auto it = kv.find("key");
+            if (it == kv.end()) {
+                spdlog::error("processor cfb requires key=<...>");
+                return std::nullopt;
+            }
+            bool reverse = kv.count("reverse") ? parse_bool(kv["reverse"]) : false;
+            chain.add(std::make_unique<tunnel::CfbProcessor>(it->second, reverse));
+        } else if (name == "padding") {
+            if (!kv.count("chunk") || !kv.count("max")) {
+                spdlog::error("processor padding requires chunk=<N>,max=<M>");
+                return std::nullopt;
+            }
+            size_t chunk = static_cast<size_t>(std::stoull(kv["chunk"]));
+            size_t max = static_cast<size_t>(std::stoull(kv["max"]));
+            uint64_t seed = 0;
+            if (kv.count("seed")) {
+                seed = static_cast<uint64_t>(std::stoull(kv["seed"]));
+            } else {
+                uint64_t t = static_cast<uint64_t>(
+                    std::chrono::high_resolution_clock::now().time_since_epoch().count());
+                uint64_t r = (static_cast<uint64_t>(std::random_device{}()) << 32)
+                           ^ static_cast<uint64_t>(std::random_device{}());
+                seed = t ^ r;
+            }
+            bool reverse = kv.count("reverse") ? parse_bool(kv["reverse"]) : false;
+            chain.add(std::make_unique<tunnel::PaddingProcessor>(chunk, max, seed, reverse));
+        } else {
+            spdlog::error("unknown processor: {}", name);
+            return std::nullopt;
+        }
+    }
+
+    return chain;
+}
 
 // ---- JSON logging helpers ----
 
@@ -252,8 +336,7 @@ void start_session(SessionPtr s)
 asio::awaitable<void> do_accept(asio::io_context& ctx,
                                 tcp::acceptor acceptor,
                                 tcp::endpoint remote_ep,
-                                std::string cfb_key,
-                                bool cfb_reverse)
+                                std::vector<std::string> processor_specs)
 {
     uint64_t next_id = 0;
     while (true) {
@@ -267,12 +350,11 @@ asio::awaitable<void> do_accept(asio::io_context& ctx,
         auto id = next_id++;
         log_conn_new(id, local.remote_endpoint(), remote_ep);
 
-        auto chain = tunnel::ProcessorChain{};
-        if (cfb_key.empty()) {
-            chain.add(std::make_unique<tunnel::IdentityProcessor>());
-        } else {
-            chain.add(std::make_unique<tunnel::CfbProcessor>(cfb_key, cfb_reverse));
+        auto chain_opt = build_processor_chain(processor_specs);
+        if (!chain_opt.has_value()) {
+            co_return;
         }
+        auto chain = std::move(chain_opt.value());
 
         auto s = std::make_shared<SessionState>(ctx, std::move(local), std::move(chain));
         s->id = id;
@@ -294,7 +376,7 @@ asio::awaitable<void> do_accept(asio::io_context& ctx,
 // ---- Public API ----
 
 void run_tunnel(std::string_view listen_addr, std::string_view remote_addr,
-                std::string_view cfb_key, bool cfb_reverse)
+                const std::vector<std::string>& processor_specs)
 {
     auto colon1 = listen_addr.rfind(':');
     auto colon2 = remote_addr.rfind(':');
@@ -326,7 +408,7 @@ void run_tunnel(std::string_view listen_addr, std::string_view remote_addr,
                  listen_ip, listen_port, remote_ip, remote_port);
 
     co_spawn(ctx, do_accept(ctx, std::move(acceptor), remote_ep,
-                           std::string(cfb_key), cfb_reverse), detached);
+                           processor_specs), detached);
 
     ctx.run();
 }

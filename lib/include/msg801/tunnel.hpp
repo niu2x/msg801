@@ -5,12 +5,12 @@
 
 #include <cstdint>
 #include <string>
+#include <vector>
 #include <string_view>
 
 namespace msg801 {
 
 MSG801_API void run_tunnel(std::string_view listen_addr, std::string_view remote_addr,
-                           std::string_view cfb_key = {},
-                           bool cfb_reverse = false);
+                           const std::vector<std::string>& processor_specs = {});
 
 } // namespace msg801

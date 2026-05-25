@@ -4,7 +4,7 @@
 
 - UDP 发送客户端（`send`）
 - UDP 监听服务（`serve`）
-- TCP 隧道（`tunnel`），可选 CFB 流加密传输
+- TCP 隧道（`tunnel`），支持可配置 Processor Pipeline
 
 本文档聚焦“用户快速上手”。
 更详细的设计、测试、日志说明请查看 `docs/`。
@@ -14,7 +14,8 @@
 - **UDP 单次发送**：快速向目标地址发送 UDP 消息
 - **UDP 监听接收**：在指定端口接收并输出 UDP 数据
 - **TCP 隧道转发**：本地监听并转发到远端
-- **可选 CFB 传输混淆**：通过 `--cfb-key` 启用处理器
+- **可扩展处理器链**：通过重复 `--processor` 按顺序组装处理链
+- **内置处理器**：`identity`、`cfb`、`padding`（分帧随机填充）
 - **结构化隧道日志**：JSON 行日志（`conn_new`、`conn_close`、`stat`）
 
 ## 环境要求
@@ -75,7 +76,7 @@ Boost_ROOT=/path/to/boost-1.89.0
 ./dist/bin/msg801 tunnel --listen 0.0.0.0:7777 --remote 127.0.0.1:8080
 ```
 
-### 4）TCP 双跳 CFB 隧道
+### 4）TCP 双跳 Pipeline 隧道（CFB + Padding）
 
 使用两个隧道进程：
 
@@ -85,7 +86,8 @@ Boost_ROOT=/path/to/boost-1.89.0
 ./dist/bin/msg801 tunnel \
   --listen 0.0.0.0:7000 \
   --remote 10.0.0.2:7001 \
-  --cfb-key "your-key"
+  --processor "padding:chunk=1024,max=64,seed=42" \
+  --processor "cfb:key=your-key"
 ```
 
 - 出口节点（本地方向解密）：
@@ -94,15 +96,23 @@ Boost_ROOT=/path/to/boost-1.89.0
 ./dist/bin/msg801 tunnel \
   --listen 0.0.0.0:7001 \
   --remote 127.0.0.1:8080 \
-  --cfb-key "your-key" \
-  --cfb-reverse
+  --processor "cfb:key=your-key,reverse=1" \
+  --processor "padding:chunk=1024,max=64,seed=42,reverse=1"
 ```
 
 ## 命令一览
 
 - `msg801 send <ip> <port> <message>`
 - `msg801 serve <port>`
-- `msg801 tunnel --listen <ip:port> --remote <ip:port> [--cfb-key <key>] [--cfb-reverse]`
+- `msg801 tunnel --listen <ip:port> --remote <ip:port> [--processor <spec>]...`
+
+常用 `--processor` 示例：
+
+- `identity`
+- `cfb:key=secret`
+- `cfb:key=secret,reverse=1`
+- `padding:chunk=1024,max=64,seed=42`
+- `padding:chunk=1024,max=64,seed=42,reverse=1`
 
 ## 日志
 
@@ -128,6 +138,8 @@ bash scripts/test_tunnel.sh
 - 并发客户端
 - 快速连断稳定性
 - 双跳 CFB 模式
+- 双跳 Padding 模式
+- 双跳 CFB + Padding 组合模式
 - 客户端流水线发送（不等逐包响应）
 
 详见 `docs/testing.md`。

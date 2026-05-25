@@ -47,9 +47,9 @@ while True:
 " &
 }
 
-# send data through tunnel on TUNNEL_PORT, return echoed response
-send_recv() {
-    printf '%s' "$1" | python3 -c "
+send_recv_to() {
+    local port="$1"
+    printf '%s' "$2" | python3 -c "
 import socket, sys
 data = sys.stdin.buffer.read()
 s = socket.socket()
@@ -64,16 +64,39 @@ while True:
     resp += chunk
 s.close()
 sys.stdout.buffer.write(resp)
-" "$TUNNEL_PORT"
+" "$port"
+}
+
+# send data through tunnel on TUNNEL_PORT, return echoed response
+send_recv() {
+    send_recv_to "$TUNNEL_PORT" "$1"
+}
+
+# compare two files byte-by-byte (handles null bytes unlike bash [[ ]])
+file_eq() {
+    python3 -c "
+import sys
+a = open(sys.argv[1], 'rb').read()
+b = open(sys.argv[2], 'rb').read()
+sys.exit(0 if a == b else 1)
+" "$1" "$2"
+}
+
+# send data to port, write response to file, compare with expected file
+send_recv_cmp() {
+    local port="$1" expected="$2" outfile="$3"
+    send_recv_to "$port" "$(cat "$expected")" > "$outfile"
+    file_eq "$expected" "$outfile"
 }
 
 concurrent_test() {
     local n="$1"
-    local payload="$2"
+    local port="$2"
+    local payload="$3"
     local pids=()
     for i in $(seq 1 "$n"); do
         (
-            result=$(send_recv "$payload")
+            result=$(send_recv_to "$port" "$payload")
             if [[ "$result" != "$payload" ]]; then
                 exit 1
             fi
@@ -93,43 +116,48 @@ concurrent_test() {
 run_tests() {
     echo "=== 1. short message ==="
     result=$(send_recv "hello tunnel")
-    check "short message" "[[ '$result' = 'hello tunnel' ]]"
+    ok1=true; [[ "$result" = "hello tunnel" ]] || ok1=false
+    check "short message" "[[ '$ok1' = 'true' ]]"
 
     echo "=== 2. empty message ==="
     result=$(send_recv "")
-    check "empty message" "[[ '$result' = '' ]]"
+    ok2=true; [[ "$result" = "" ]] || ok2=false
+    check "empty message" "[[ '$ok2' = 'true' ]]"
 
     echo "=== 3. 10KB payload ==="
     data=$(head -c 10240 /dev/urandom | base64 -w0)
     result=$(send_recv "$data")
-    check "10KB payload" "[[ '$result' = '$data' ]]"
+    ok3=true; [[ "$result" = "$data" ]] || ok3=false
+    check "10KB payload" "[[ '$ok3' = 'true' ]]"
 
     echo "=== 4. 64KB payload ==="
     data=$(head -c 65536 /dev/urandom | base64 -w0)
     result=$(send_recv "$data")
-    check "64KB payload" "[[ '$result' = '$data' ]]"
+    ok4=true; [[ "$result" = "$data" ]] || ok4=false
+    check "64KB payload" "[[ '$ok4' = 'true' ]]"
 
     echo "=== 5. 1MB payload ==="
     data=$(head -c 1048576 /dev/urandom | base64 -w0)
     result=$(send_recv "$data")
-    check "1MB payload" "[[ '$result' = '$data' ]]"
+    ok5=true; [[ "$result" = "$data" ]] || ok5=false
+    check "1MB payload" "[[ '$ok5' = 'true' ]]"
 
     echo "=== 6. 4 concurrent clients, 1KB each ==="
     local ok6=true
     data=$(head -c 1024 /dev/urandom | base64 -w0)
-    concurrent_test 4 "$data" || ok6=false
+    concurrent_test 4 "$TUNNEL_PORT" "$data" || ok6=false
     check "4 concurrent 1KB" "[[ '$ok6' = 'true' ]]"
 
     echo "=== 7. 16 concurrent clients, 1KB each ==="
     local ok7=true
     data=$(head -c 1024 /dev/urandom | base64 -w0)
-    concurrent_test 16 "$data" || ok7=false
+    concurrent_test 16 "$TUNNEL_PORT" "$data" || ok7=false
     check "16 concurrent 1KB" "[[ '$ok7' = 'true' ]]"
 
     echo "=== 8. 16 concurrent clients, 64KB each ==="
     local ok8=true
     data=$(head -c 65536 /dev/urandom | base64 -w0)
-    concurrent_test 16 "$data" || ok8=false
+    concurrent_test 16 "$TUNNEL_PORT" "$data" || ok8=false
     check "16 concurrent 64KB" "[[ '$ok8' = 'true' ]]"
 
     echo "=== 9. rapid connect/disconnect (no crash) ==="
@@ -143,60 +171,47 @@ run_tests() {
 
     echo "=== 10. tunnel still alive ==="
     result=$(send_recv "ping")
-    check "tunnel still responsive" "[[ '$result' = 'ping' ]]"
+    ok10=true; [[ "$result" = "ping" ]] || ok10=false
+    check "tunnel still responsive" "[[ '$ok10' = 'true' ]]"
 }
 
 # ---- XOR two-hop test: A(encrypt) → B(decrypt) → echo ----
-
-xor_send_recv() {
-    printf '%s' "$1" | python3 -c "
-import socket, sys
-data = sys.stdin.buffer.read()
-s = socket.socket()
-s.settimeout(5)
-s.connect(('127.0.0.1', int(sys.argv[1])))
-s.sendall(data)
-s.shutdown(socket.SHUT_WR)
-resp = b''
-while True:
-    chunk = s.recv(65536)
-    if not chunk: break
-    resp += chunk
-s.close()
-sys.stdout.buffer.write(resp)
-" "$XOR_LISTEN_PORT"
-}
 
 run_xor_tests() {
     echo ""
     echo "--- XOR two-hop tests (A encrypt → B decrypt) ---"
 
     local ok1=true
-    result=$(xor_send_recv "hello xor")
-    check "xor short message" "[[ '$result' = 'hello xor' ]]"
+    result=$(send_recv_to "$XOR_LISTEN_PORT" "hello xor")
+    [[ "$result" = "hello xor" ]] || ok1=false
+    check "xor short message" "[[ '$ok1' = 'true' ]]"
 
     local ok2=true
-    result=$(xor_send_recv "")
-    check "xor empty message" "[[ '$result' = '' ]]"
+    result=$(send_recv_to "$XOR_LISTEN_PORT" "")
+    [[ "$result" = "" ]] || ok2=false
+    check "xor empty message" "[[ '$ok2' = 'true' ]]"
 
     local ok3=true
     data=$(head -c 10240 /dev/urandom | base64 -w0)
-    result=$(xor_send_recv "$data")
-    check "xor 10KB payload" "[[ '$result' = '$data' ]]"
+    result=$(send_recv_to "$XOR_LISTEN_PORT" "$data")
+    [[ "$result" = "$data" ]] || ok3=false
+    check "xor 10KB payload" "[[ '$ok3' = 'true' ]]"
 
     local ok4=true
     data=$(head -c 65536 /dev/urandom | base64 -w0)
-    result=$(xor_send_recv "$data")
-    check "xor 64KB payload" "[[ '$result' = '$data' ]]"
+    result=$(send_recv_to "$XOR_LISTEN_PORT" "$data")
+    [[ "$result" = "$data" ]] || ok4=false
+    check "xor 64KB payload" "[[ '$ok4' = 'true' ]]"
 
     local ok5=true
     data=$(head -c 1024 /dev/urandom | base64 -w0)
-    concurrent_test 16 "$data" || ok5=false
+    concurrent_test 16 "$XOR_LISTEN_PORT" "$data" || ok5=false
     check "xor 16 concurrent 1KB" "[[ '$ok5' = 'true' ]]"
 
     local ok6=true
-    result=$(xor_send_recv "ping")
-    check "xor tunnel still alive" "[[ '$result' = 'ping' ]]"
+    result=$(send_recv_to "$XOR_LISTEN_PORT" "ping")
+    [[ "$result" = "ping" ]] || ok6=false
+    check "xor tunnel still alive" "[[ '$ok6' = 'true' ]]"
 
     echo "=== xor batch pipelined: 20 chunks without waiting ==="
     local ok7=true
@@ -233,6 +248,56 @@ sys.exit(0)
     check "xor 20 pipelined chunks" "[[ $ok7 = true ]]"
 }
 
+# ---- padding two-hop test: A(pad encode) → B(pad decode) → echo ----
+
+run_padding_tests() {
+    echo ""
+    echo "--- padding two-hop tests (A pad encode → B pad decode) ---"
+
+    local ok1=true
+    result=$(send_recv_to "$PAD_LISTEN_PORT" "hello pad")
+    [[ "$result" = "hello pad" ]] || ok1=false
+    check "pad short message" "[[ '$ok1' = 'true' ]]"
+
+    local ok2=true
+    result=$(send_recv_to "$PAD_LISTEN_PORT" "")
+    [[ "$result" = "" ]] || ok2=false
+    check "pad empty message" "[[ '$ok2' = 'true' ]]"
+
+    local ok3=true
+    data=$(head -c 10240 /dev/urandom | base64 -w0)
+    result=$(send_recv_to "$PAD_LISTEN_PORT" "$data")
+    [[ "$result" = "$data" ]] || ok3=false
+    check "pad 10KB payload" "[[ '$ok3' = 'true' ]]"
+
+    local ok4=true
+    data=$(head -c 65536 /dev/urandom | base64 -w0)
+    result=$(send_recv_to "$PAD_LISTEN_PORT" "$data")
+    [[ "$result" = "$data" ]] || ok4=false
+    check "pad 64KB payload" "[[ '$ok4' = 'true' ]]"
+
+    local ok5=true
+    data=$(head -c 1048576 /dev/urandom | base64 -w0)
+    result=$(send_recv_to "$PAD_LISTEN_PORT" "$data")
+    [[ "$result" = "$data" ]] || ok5=false
+    check "pad 1MB payload" "[[ '$ok5' = 'true' ]]"
+
+    local ok6=true
+    data=$(head -c 1024 /dev/urandom | base64 -w0)
+    concurrent_test 16 "$PAD_LISTEN_PORT" "$data" || ok6=false
+    check "pad 16 concurrent 1KB" "[[ '$ok6' = 'true' ]]"
+
+    local ok7=true
+    data=$(head -c 65536 /dev/urandom | base64 -w0)
+    concurrent_test 4 "$PAD_LISTEN_PORT" "$data" || ok7=false
+    check "pad 4 concurrent 64KB" "[[ '$ok7' = 'true' ]]"
+
+    local ok8=true
+    result=$(send_recv_to "$PAD_LISTEN_PORT" "ping")
+    [[ "$result" = "ping" ]] || ok8=false
+    check "pad tunnel still alive" "[[ '$ok8' = 'true' ]]"
+}
+
 # ---- main ----
 
 # Standard tests
@@ -250,7 +315,7 @@ XOR_DECODE_PORT=19996
 XOR_LISTEN_PORT=${4:-19995}
 XOR_KEY="${5:-my-secret-key}"
 
-if "$TUNNEL_BIN" tunnel --help 2>/dev/null | grep -q cfb-key; then
+if "$TUNNEL_BIN" tunnel --help 2>/dev/null | grep -q processor; then
     start_echo "$XOR_ECHO_PORT"
     sleep 0.5
 
@@ -258,16 +323,104 @@ if "$TUNNEL_BIN" tunnel --help 2>/dev/null | grep -q cfb-key; then
     "$TUNNEL_BIN" tunnel \
         --listen "127.0.0.1:$XOR_DECODE_PORT" \
         --remote "127.0.0.1:$XOR_ECHO_PORT" \
-        --cfb-key "$XOR_KEY" --cfb-reverse &
+        --processor "cfb:key=$XOR_KEY,reverse=1" &
 
     # Tunnel A: encrypt side (CFB encode), listen external → B
     "$TUNNEL_BIN" tunnel \
         --listen "127.0.0.1:$XOR_LISTEN_PORT" \
         --remote "127.0.0.1:$XOR_DECODE_PORT" \
-        --cfb-key "$XOR_KEY" &
+        --processor "cfb:key=$XOR_KEY" &
     sleep 0.5
 
     run_xor_tests
+fi
+
+# padding two-hop tests: A(pad encode) → B(pad decode) → echo
+PAD_ECHO_PORT=19994
+PAD_DECODE_PORT=19993
+PAD_LISTEN_PORT=${6:-19992}
+PAD_CHUNK=${7:-1024}
+PAD_MAX=${8:-64}
+
+if "$TUNNEL_BIN" tunnel --help 2>/dev/null | grep -q processor; then
+    start_echo "$PAD_ECHO_PORT"
+    sleep 0.5
+
+    "$TUNNEL_BIN" tunnel \
+        --listen "127.0.0.1:$PAD_DECODE_PORT" \
+        --remote "127.0.0.1:$PAD_ECHO_PORT" \
+        --processor "padding:chunk=$PAD_CHUNK,max=$PAD_MAX,reverse=1" &
+
+    "$TUNNEL_BIN" tunnel \
+        --listen "127.0.0.1:$PAD_LISTEN_PORT" \
+        --remote "127.0.0.1:$PAD_DECODE_PORT" \
+        --processor "padding:chunk=$PAD_CHUNK,max=$PAD_MAX" &
+    sleep 0.5
+
+    run_padding_tests
+fi
+
+# padding+cfb pipeline two-hop tests: A(cfb→pad) → B(unpad→decfb) → echo
+PC_ECHO_PORT=19991
+PC_DECODE_PORT=19990
+PC_LISTEN_PORT=${9:-19989}
+PC_KEY="${10:-pipeline-secret}"
+
+run_padding_cfb_tests() {
+    echo ""
+    echo "--- padding+cfb pipeline two-hop tests ---"
+
+    local ok1=true
+    result=$(send_recv_to "$PC_LISTEN_PORT" "hello pipeline")
+    [[ "$result" = "hello pipeline" ]] || ok1=false
+    check "pad+cfb short message" "[[ '$ok1' = 'true' ]]"
+
+    local ok2=true
+    result=$(send_recv_to "$PC_LISTEN_PORT" "")
+    [[ "$result" = "" ]] || ok2=false
+    check "pad+cfb empty message" "[[ '$ok2' = 'true' ]]"
+
+    local ok3=true
+    data=$(head -c 10240 /dev/urandom | base64 -w0)
+    result=$(send_recv_to "$PC_LISTEN_PORT" "$data")
+    [[ "$result" = "$data" ]] || ok3=false
+    check "pad+cfb 10KB payload" "[[ '$ok3' = 'true' ]]"
+
+    local ok4=true
+    data=$(head -c 65536 /dev/urandom | base64 -w0)
+    result=$(send_recv_to "$PC_LISTEN_PORT" "$data")
+    [[ "$result" = "$data" ]] || ok4=false
+    check "pad+cfb 64KB payload" "[[ '$ok4' = 'true' ]]"
+
+    local ok5=true
+    data=$(head -c 1024 /dev/urandom | base64 -w0)
+    concurrent_test 16 "$PC_LISTEN_PORT" "$data" || ok5=false
+    check "pad+cfb 16 concurrent 1KB" "[[ '$ok5' = 'true' ]]"
+
+    local ok6=true
+    result=$(send_recv_to "$PC_LISTEN_PORT" "ping")
+    [[ "$result" = "ping" ]] || ok6=false
+    check "pad+cfb tunnel still alive" "[[ '$ok6' = 'true' ]]"
+}
+
+if "$TUNNEL_BIN" tunnel --help 2>/dev/null | grep -q processor; then
+    start_echo "$PC_ECHO_PORT"
+    sleep 0.5
+
+    "$TUNNEL_BIN" tunnel \
+        --listen "127.0.0.1:$PC_DECODE_PORT" \
+        --remote "127.0.0.1:$PC_ECHO_PORT" \
+        --processor "padding:chunk=1024,max=64,reverse=1" \
+        --processor "cfb:key=$PC_KEY,reverse=1" &
+
+    "$TUNNEL_BIN" tunnel \
+        --listen "127.0.0.1:$PC_LISTEN_PORT" \
+        --remote "127.0.0.1:$PC_DECODE_PORT" \
+        --processor "cfb:key=$PC_KEY" \
+        --processor "padding:chunk=1024,max=64" &
+    sleep 0.5
+
+    run_padding_cfb_tests
 fi
 
 echo ""

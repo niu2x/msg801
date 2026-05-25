@@ -27,7 +27,25 @@
 - 接口：`msg801::tunnel::Processor`
 - 组合器：`msg801::tunnel::ProcessorChain`
 - 默认透传：`IdentityProcessor`
-- 可选流处理：`CfbProcessor`
+- 可选流处理：`CfbProcessor`、`PaddingProcessor`
+
+Processor 的装配由 CLI `--processor` 参数驱动，按声明顺序加入 `ProcessorChain`。
+
+### Pipeline 方向规则
+
+`ProcessorChain` 的 apply 方向：
+
+- `on_local_data` / `flush_local`：按添加顺序（正向）依次调用各处理器
+- `on_remote_data` / `flush_remote`：按添加顺序的**逆序**依次调用各处理器
+
+```
+例：--processor "cfb" --processor "padding"
+   on_local_data:  cfb → padding
+   on_remote_data: padding → cfb
+```
+
+数据从本地发往远端时经正向 pipeline 编码；从远端回本地时经逆序 pipeline 解码，
+保证编码与解码操作完全对称。
 
 ## CFB 处理器模型
 
@@ -35,8 +53,28 @@
 
 - `enc_iv_`：local->remote 加密状态
 - `dec_iv_`：remote->local 解密状态
+- `enc_offset_` / `dec_offset_`：各方向已处理字节计数器
 
-`--cfb-reverse` 会交换角色，以支持双跳场景中的出口节点。
+IV 索引使用全局偏移（`(offset + i) % iv.size()`）而非单次调用的局部位置，
+确保数据分多次送入 `on_local_data` / `on_remote_data` 时 IV 位置不重置。
+
+`cfb:...,reverse=1` 会交换角色，以支持双跳场景中的出口节点。
+
+## Padding 处理器模型
+
+`PaddingProcessor` 使用分帧随机填充：
+
+- 帧头：`payload_len` + `pad_len`（8 字节）
+- 帧体：`payload` + 随机 `padding`
+
+参数：
+
+- `chunk`：每帧最大业务负载
+- `max`：每帧最大随机填充字节数
+- `seed`：随机种子（可选；不配置时使用时间源自动生成）
+- `reverse=1`：切换为反向角色（出口节点）
+
+说明：解码按帧头 `payload_len` / `pad_len` 进行，不依赖双方 seed 一致。
 
 ## 错误处理模型
 

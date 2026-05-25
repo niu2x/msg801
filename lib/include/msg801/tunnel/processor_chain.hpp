@@ -55,10 +55,10 @@ public:
             .data = std::vector<char>(input.begin(), input.end())
         });
 
-        for (auto& p : processors_) {
+        for (auto it = processors_.rbegin(); it != processors_.rend(); ++it) {
             std::vector<DataBuffer> next;
             for (auto& buf : cur) {
-                p->on_remote_data(std::span<const char>(buf.data.data(), buf.data.size()), next);
+                (*it)->on_remote_data(std::span<const char>(buf.data.data(), buf.data.size()), next);
             }
             cur = std::move(next);
         }
@@ -82,12 +82,12 @@ public:
     void flush_remote(std::vector<DataBuffer>& output)
     {
         std::vector<DataBuffer> cur;
-        for (auto& p : processors_) {
+        for (auto it = processors_.rbegin(); it != processors_.rend(); ++it) {
             std::vector<DataBuffer> next;
             for (auto& buf : cur) {
-                p->on_remote_data(std::span<const char>(buf.data.data(), buf.data.size()), next);
+                (*it)->on_remote_data(std::span<const char>(buf.data.data(), buf.data.size()), next);
             }
-            p->flush_remote(next);
+            (*it)->flush_remote(next);
             cur = std::move(next);
         }
         output = std::move(cur);

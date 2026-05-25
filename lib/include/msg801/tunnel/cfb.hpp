@@ -31,24 +31,26 @@ public:
                        std::vector<DataBuffer>& output) override
     {
         if (reverse_)
-            decrypt(input, output, dec_iv_);
+            decrypt(input, output, dec_iv_, dec_offset_);
         else
-            encrypt(input, output, enc_iv_);
+            encrypt(input, output, enc_iv_, enc_offset_);
     }
 
     void on_remote_data(std::span<const char> input,
                         std::vector<DataBuffer>& output) override
     {
         if (reverse_)
-            encrypt(input, output, enc_iv_);
+            encrypt(input, output, enc_iv_, enc_offset_);
         else
-            decrypt(input, output, dec_iv_);
+            decrypt(input, output, dec_iv_, dec_offset_);
     }
 
 private:
     std::vector<char> enc_iv_;
     std::vector<char> dec_iv_;
     bool reverse_;
+    size_t enc_offset_ = 0;
+    size_t dec_offset_ = 0;
 
     void mix(char cipher, std::vector<char>& iv, size_t pos)
     {
@@ -59,34 +61,38 @@ private:
     /// 加密: input=明文, output=密文, iv 用密文字节更新
     void encrypt(std::span<const char> input,
                  std::vector<DataBuffer>& output,
-                 std::vector<char>& iv)
+                 std::vector<char>& iv,
+                 size_t& offset)
     {
         auto buf = DataBuffer{
             .data = std::vector<char>(input.begin(), input.end())
         };
         for (size_t i = 0; i < buf.data.size(); ++i) {
-            size_t pos = i % iv.size();
+            size_t pos = (offset + i) % iv.size();
             char cipher = buf.data[i] ^ iv[pos];
             buf.data[i] = cipher;
             mix(cipher, iv, pos);
         }
+        offset += buf.data.size();
         output.push_back(std::move(buf));
     }
 
     /// 解密: input=密文, output=明文, iv 用原始输入字节（密文）更新
     void decrypt(std::span<const char> input,
                  std::vector<DataBuffer>& output,
-                 std::vector<char>& iv)
+                 std::vector<char>& iv,
+                 size_t& offset)
     {
         auto buf = DataBuffer{
             .data = std::vector<char>(input.begin(), input.end())
         };
         for (size_t i = 0; i < buf.data.size(); ++i) {
-            size_t pos = i % iv.size();
+            size_t pos = (offset + i) % iv.size();
             char cipher = buf.data[i];      // 输入就是密文
             buf.data[i] ^= iv[pos];          // 还原明文
             mix(cipher, iv, pos);            // 用密文字节更新 IV
         }
+        offset += buf.data.size();
         output.push_back(std::move(buf));
     }
 };
