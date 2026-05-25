@@ -100,6 +100,34 @@ Boost_ROOT=/path/to/boost-1.89.0
   --processor "padding:chunk=1024,max=64,seed=42,reverse=1"
 ```
 
+### 5）Supervisor 配置示例
+
+将入口/出口节点托管到 supervisord：
+
+```ini
+[program:msg801-tunnel-a]
+command=msg801 tunnel
+    --listen 0.0.0.0:7000
+    --remote 10.0.0.2:7001
+    --processor "padding:chunk=1024,max=64"
+    --processor "cfb:key=your-key"
+directory=%(ENV_HOME)s/project/msg801
+autorestart=true
+stderr_logfile=/var/log/msg801/a-err.log
+stdout_logfile=/var/log/msg801/a-out.log
+
+[program:msg801-tunnel-b]
+command=msg801 tunnel
+    --listen 0.0.0.0:7001
+    --remote 127.0.0.1:8080
+    --processor "cfb:key=your-key,reverse=1"
+    --processor "padding:chunk=1024,max=64,reverse=1"
+directory=%(ENV_HOME)s/project/msg801
+autorestart=true
+stderr_logfile=/var/log/msg801/b-err.log
+stdout_logfile=/var/log/msg801/b-out.log
+```
+
 ## 命令一览
 
 - `msg801 send <ip> <port> <message>`
