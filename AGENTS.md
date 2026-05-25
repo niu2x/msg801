@@ -1,24 +1,37 @@
 # msg801
 
-- C++20
-- 依赖 Boost >= 1.89 (program_options, asio header-only) 和 spdlog (header-only)
+- C++20, 依赖 Boost >= 1.89 和 spdlog (header-only)
 - 提交日志必须用中文
-- 不要自动 commit，只在用户明确说 `/commit` 时才 commit
+- 只在用户明确说 `/commit` 时才 commit
 
-## 命名
+## 构建与测试
 
-- **类 / 类型别名**: PascalCase（`MyClass`、`MyType`）
-- **枚举常量**: UPPER_SNAKE_CASE（`VALUE_ONE`、`ANOTHER_VALUE`）
-- **常量（`constexpr` / `const`，文件或命名空间作用域）**: UPPER_SNAKE_CASE（`SOME_CONSTANT`）
-- **函数 / 变量**: snake_case（`do_something`、`some_variable`）
+```bash
+make build          # cmake configure + build + install to dist/
+bash scripts/test_tunnel.sh   # 全部集成测试（31 项）
+```
+
+Boost 路径通过 `.env` 中 `Boost_ROOT` 指定，`Makefile` 自动加载。
+
+## 项目结构
+
+| 路径 | 说明 |
+|---|---|
+| `lib/src/*.cpp` / `lib/include/msg801/` | 共享库 `libmsg801.so`，所有业务逻辑 |
+| `cli/src/main.cpp` | 可执行入口（链接 libmsg801.so + Boost.program_options） |
+| `scripts/test_tunnel.sh` | 集成测试（单跳、双跳 CFB/Padding/组合） |
+| `cmake/` | C++20 preset, warning-as-error, config template |
+
+## 风格规范
+
+- **类 / 类型别名**: PascalCase
+- **枚举常量**: UPPER_SNAKE_CASE
+- **常量（constexpr/const，文件或命名空间作用域）**: UPPER_SNAKE_CASE
+- **函数 / 变量**: snake_case
 - **非公开成员**: snake_case + 下划线后缀（`data_`、`count_`）
-- **Getter**: 必须用 `get_xxx()` 前缀，不能用裸名词或属性名。例：`get_buffer()`、`get_width()`。错误：`buffer()`、`width()`。
-- **布尔 Getter**: 必须用 `is_xxx()` 前缀。例：`is_ready()`、`is_valid()`。错误：`ready()`、`valid()`。
-- **Setter**: 必须用 `set_xxx()` 前缀。例：`set_name()`、`set_value()`。错误：`name()`、`value()`。
-- **头文件**: 声明仅包含接口签名和短小的内联函数（如 getter/setter/简单工厂）。多行函数体必须放在 `lib/src/*.cpp` 中。
-- **头文件顺序**: `#include` 应按以下分组依次排列，组间空行分隔：
-    1. 标准 C 库（`<cstdint>`、`<cstdlib>` 等）
-    2. 标准 C++ 库（`<vector>`、`<string>`、`<memory>` 等）
-    3. 第三方库（`<boost/asio.hpp>`、`<spdlog/spdlog.h>` 等）
-    4. 项目自己的头文件（`"msg801/tunnel.hpp"` 等）
-- **Public 头文件引用**: `lib/include/msg801/` 下的头文件中，项目内部 `#include` 使用 `<>` 而非 `""`。例：`#include <msg801/export.hpp>`。
+- **Getter**: `get_xxx()` 前缀（如 `get_buffer()`）
+- **布尔 Getter**: `is_xxx()` 前缀（如 `is_ready()`）
+- **Setter**: `set_xxx()` 前缀（如 `set_name()`）
+- **头文件**: 声明仅含接口签名和短小内联函数（getter/setter/简单工厂），多行函数体放 `lib/src/*.cpp`
+- **#include 顺序**: 标准 C → 标准 C++ → 第三方 → 项目，组间空行
+- **Public 头文件引用**: `lib/include/msg801/` 下的头文件中，项目内 `#include` 用 `<>` 而非 `""`
