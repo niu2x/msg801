@@ -1,3 +1,8 @@
+#include <limits>
+#include <stdexcept>
+
+#include <spdlog/spdlog.h>
+
 #include "msg801/tunnel/padding.hpp"
 
 namespace msg801::tunnel {
@@ -77,6 +82,8 @@ void PaddingProcessor::decode(ByteSpan input,
                               ByteVector& acc,
                               DataBufferList& output)
 {
+    constexpr uint64_t HEADER_LEN = 8;
+
     acc.insert(acc.end(), input.begin(), input.end());
 
     size_t pos = 0;
@@ -87,7 +94,21 @@ void PaddingProcessor::decode(ByteSpan input,
 
         uint32_t payload_len = read_u32(acc.data() + static_cast<std::ptrdiff_t>(pos));
         uint32_t pad_len = read_u32(acc.data() + static_cast<std::ptrdiff_t>(pos + 4));
-        size_t frame_len = 8 + static_cast<size_t>(payload_len) + static_cast<size_t>(pad_len);
+        if (payload_len > chunk_size_ || pad_len > pad_max_) {
+            spdlog::warn("invalid padding frame header: payload_len={}, pad_len={}, chunk_size={}, pad_max={}",
+                         payload_len, pad_len, chunk_size_, pad_max_);
+            throw std::runtime_error("invalid padding frame header");
+        }
+
+        uint64_t frame_len_u64 = HEADER_LEN + static_cast<uint64_t>(payload_len)
+                               + static_cast<uint64_t>(pad_len);
+        if (frame_len_u64 > static_cast<uint64_t>(std::numeric_limits<size_t>::max())) {
+            spdlog::warn("invalid padding frame length overflow: payload_len={}, pad_len={}",
+                         payload_len, pad_len);
+            throw std::runtime_error("invalid padding frame length overflow");
+        }
+
+        size_t frame_len = static_cast<size_t>(frame_len_u64);
 
         if (acc.size() - pos < frame_len) {
             break;

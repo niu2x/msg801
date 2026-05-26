@@ -15,7 +15,9 @@
 #include <atomic>
 #include <chrono>
 #include <cstdint>
+#include <exception>
 #include <memory>
+#include <limits>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -95,6 +97,11 @@ std::optional<tunnel::ProcessorChain> build_processor_chain(const std::vector<st
             }
             size_t chunk = static_cast<size_t>(std::stoull(kv["chunk"]));
             size_t max = static_cast<size_t>(std::stoull(kv["max"]));
+            constexpr size_t U32_MAX_AS_SIZE_T = static_cast<size_t>(std::numeric_limits<uint32_t>::max());
+            if (chunk > U32_MAX_AS_SIZE_T || max > U32_MAX_AS_SIZE_T) {
+                spdlog::error("processor padding requires chunk/max <= {}", U32_MAX_AS_SIZE_T);
+                return std::nullopt;
+            }
             uint64_t seed = 0;
             if (kv.count("seed")) {
                 seed = static_cast<uint64_t>(std::stoull(kv["seed"]));
@@ -226,7 +233,14 @@ asio::awaitable<void> read_local(SessionPtr s)
         }
 
         DataBufferList output;
-        s->chain.on_local_data(ByteSpan(buf.data(), n), output);
+        try {
+            s->chain.on_local_data(ByteSpan(buf.data(), n), output);
+        } catch (const std::exception& e) {
+            spdlog::warn("close session id={} due to invalid local stream data: {}",
+                         s->id, e.what());
+            if (!s->closed) s->close_all();
+            co_return;
+        }
 
         for (auto& out : output) {
             try {
@@ -280,7 +294,14 @@ asio::awaitable<void> read_remote(SessionPtr s)
         }
 
         DataBufferList output;
-        s->chain.on_remote_data(ByteSpan(buf.data(), n), output);
+        try {
+            s->chain.on_remote_data(ByteSpan(buf.data(), n), output);
+        } catch (const std::exception& e) {
+            spdlog::warn("close session id={} due to invalid remote stream data: {}",
+                         s->id, e.what());
+            if (!s->closed) s->close_all();
+            co_return;
+        }
 
         for (auto& out : output) {
             try {
