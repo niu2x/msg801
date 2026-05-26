@@ -2,8 +2,8 @@
 
 `msg801` 是一个基于 C++20 与 Boost.Asio 的轻量网络工具集，当前包含：
 
-- UDP 发送客户端（`send`）
-- UDP 监听服务（`serve`）
+- UDP 发送客户端（`udp send`）
+- UDP 监听服务（`udp serve`）
 - TCP 隧道（`tunnel`），支持可配置 Processor Pipeline
 
 本文档聚焦“用户快速上手”。
@@ -69,13 +69,13 @@ Boost_ROOT=/path/to/boost-1.89.0
 启动监听：
 
 ```bash
-./dist/bin/msg801 serve 9000
+./dist/bin/msg801 udp serve 9000
 ```
 
 发送消息：
 
 ```bash
-./dist/bin/msg801 send 127.0.0.1 9000 "hello"
+./dist/bin/msg801 udp send 127.0.0.1 9000 "hello"
 ```
 
 ### 3）TCP 单跳隧道（明文）
@@ -140,8 +140,8 @@ stdout_logfile=/var/log/msg801/b-out.log
 
 ## 命令一览
 
-- `msg801 send <ip> <port> <message>`
-- `msg801 serve <port>`
+- `msg801 udp send <ip> <port> <message>`
+- `msg801 udp serve <port>`
 - `msg801 tunnel --listen <ip:port> --remote <ip:port> [--processor <spec>]...`
 
 常用 `--processor` 示例：

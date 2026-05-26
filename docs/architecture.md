@@ -2,7 +2,7 @@
 
 ## 模块划分
 
-- `cli/`：命令行入口与参数解析（`boost::program_options`）
+- `cli/`：命令行入口与参数解析（`CLI11`）
 - `lib/`：网络运行时实现（UDP 发送/监听、TCP 隧道）
 - `scripts/`：集成测试脚本
 - `thirdparty/spdlog/`：内置头文件日志依赖

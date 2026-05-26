@@ -17,28 +17,28 @@ msg801 --about
 
 ## UDP 命令
 
-### `send`（发送）
+### `udp send`（发送）
 
 ```bash
-msg801 send <ip> <port> <message>
+msg801 udp send <ip> <port> <message>
 ```
 
 示例：
 
 ```bash
-msg801 send 127.0.0.1 9000 "hello"
+msg801 udp send 127.0.0.1 9000 "hello"
 ```
 
-### `serve`（监听）
+### `udp serve`（监听）
 
 ```bash
-msg801 serve <port>
+msg801 udp serve <port>
 ```
 
 示例：
 
 ```bash
-msg801 serve 9000
+msg801 udp serve 9000
 ```
 
 ## TCP 隧道命令
