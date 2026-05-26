@@ -2,19 +2,17 @@
 
 namespace msg801::tunnel {
 
-void IdentityProcessor::on_local_data(std::span<const char> input,
-                                      std::vector<DataBuffer>& output)
+void IdentityProcessor::on_local_data(ByteSpan input, DataBufferList& output)
 {
     output.push_back(DataBuffer{
-        .data = std::vector<char>(input.begin(), input.end())
+        .data = ByteVector(input.begin(), input.end())
     });
 }
 
-void IdentityProcessor::on_remote_data(std::span<const char> input,
-                                       std::vector<DataBuffer>& output)
+void IdentityProcessor::on_remote_data(ByteSpan input, DataBufferList& output)
 {
     output.push_back(DataBuffer{
-        .data = std::vector<char>(input.begin(), input.end())
+        .data = ByteVector(input.begin(), input.end())
     });
 }
 

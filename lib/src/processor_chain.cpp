@@ -2,63 +2,61 @@
 
 namespace msg801::tunnel {
 
-void ProcessorChain::on_local_data(std::span<const char> input,
-                                   std::vector<DataBuffer>& output)
+void ProcessorChain::on_local_data(ByteSpan input, DataBufferList& output)
 {
     if (processors_.empty()) {
         output.push_back(DataBuffer{
-            .data = std::vector<char>(input.begin(), input.end())
+            .data = ByteVector(input.begin(), input.end())
         });
         return;
     }
 
-    std::vector<DataBuffer> cur;
+    DataBufferList cur;
     cur.push_back(DataBuffer{
-        .data = std::vector<char>(input.begin(), input.end())
+        .data = ByteVector(input.begin(), input.end())
     });
 
     for (auto& p : processors_) {
-        std::vector<DataBuffer> next;
+        DataBufferList next;
         for (auto& buf : cur) {
-            p->on_local_data(std::span<const char>(buf.data.data(), buf.data.size()), next);
+            p->on_local_data(ByteSpan(buf.data.data(), buf.data.size()), next);
         }
         cur = std::move(next);
     }
     output = std::move(cur);
 }
 
-void ProcessorChain::on_remote_data(std::span<const char> input,
-                                    std::vector<DataBuffer>& output)
+void ProcessorChain::on_remote_data(ByteSpan input, DataBufferList& output)
 {
     if (processors_.empty()) {
         output.push_back(DataBuffer{
-            .data = std::vector<char>(input.begin(), input.end())
+            .data = ByteVector(input.begin(), input.end())
         });
         return;
     }
 
-    std::vector<DataBuffer> cur;
+    DataBufferList cur;
     cur.push_back(DataBuffer{
-        .data = std::vector<char>(input.begin(), input.end())
+        .data = ByteVector(input.begin(), input.end())
     });
 
     for (auto it = processors_.rbegin(); it != processors_.rend(); ++it) {
-        std::vector<DataBuffer> next;
+        DataBufferList next;
         for (auto& buf : cur) {
-            (*it)->on_remote_data(std::span<const char>(buf.data.data(), buf.data.size()), next);
+            (*it)->on_remote_data(ByteSpan(buf.data.data(), buf.data.size()), next);
         }
         cur = std::move(next);
     }
     output = std::move(cur);
 }
 
-void ProcessorChain::flush_local(std::vector<DataBuffer>& output)
+void ProcessorChain::flush_local(DataBufferList& output)
 {
-    std::vector<DataBuffer> cur;
+    DataBufferList cur;
     for (auto& p : processors_) {
-        std::vector<DataBuffer> next;
+        DataBufferList next;
         for (auto& buf : cur) {
-            p->on_local_data(std::span<const char>(buf.data.data(), buf.data.size()), next);
+            p->on_local_data(ByteSpan(buf.data.data(), buf.data.size()), next);
         }
         p->flush_local(next);
         cur = std::move(next);
@@ -66,13 +64,13 @@ void ProcessorChain::flush_local(std::vector<DataBuffer>& output)
     output = std::move(cur);
 }
 
-void ProcessorChain::flush_remote(std::vector<DataBuffer>& output)
+void ProcessorChain::flush_remote(DataBufferList& output)
 {
-    std::vector<DataBuffer> cur;
+    DataBufferList cur;
     for (auto it = processors_.rbegin(); it != processors_.rend(); ++it) {
-        std::vector<DataBuffer> next;
+        DataBufferList next;
         for (auto& buf : cur) {
-            (*it)->on_remote_data(std::span<const char>(buf.data.data(), buf.data.size()), next);
+            (*it)->on_remote_data(ByteSpan(buf.data.data(), buf.data.size()), next);
         }
         (*it)->flush_remote(next);
         cur = std::move(next);

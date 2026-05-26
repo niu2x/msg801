@@ -15,15 +15,13 @@ public:
         processors_.push_back(std::move(p));
     }
 
-    void on_local_data(std::span<const char> input,
-                       std::vector<DataBuffer>& output);
+    void on_local_data(ByteSpan input, DataBufferList& output);
 
-    void on_remote_data(std::span<const char> input,
-                        std::vector<DataBuffer>& output);
+    void on_remote_data(ByteSpan input, DataBufferList& output);
 
-    void flush_local(std::vector<DataBuffer>& output);
+    void flush_local(DataBufferList& output);
 
-    void flush_remote(std::vector<DataBuffer>& output);
+    void flush_remote(DataBufferList& output);
 
 private:
     std::vector<std::unique_ptr<Processor>> processors_;

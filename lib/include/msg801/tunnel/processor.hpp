@@ -1,26 +1,24 @@
 #pragma once
 
-#include <cstddef>
-#include <span>
-#include <vector>
+#include <msg801/byte_types.hpp>
 
 namespace msg801::tunnel {
 
 struct DataBuffer {
-    std::vector<char> data;
+    ByteVector data;
 };
+
+using DataBufferList = std::vector<DataBuffer>;
 
 class Processor {
 public:
     virtual ~Processor() = default;
 
-    virtual void on_local_data(std::span<const char> input,
-                               std::vector<DataBuffer>& output) = 0;
-    virtual void on_remote_data(std::span<const char> input,
-                                std::vector<DataBuffer>& output) = 0;
+    virtual void on_local_data(ByteSpan input, DataBufferList& output) = 0;
+    virtual void on_remote_data(ByteSpan input, DataBufferList& output) = 0;
 
-    virtual void flush_local(std::vector<DataBuffer>& /*output*/) {}
-    virtual void flush_remote(std::vector<DataBuffer>& /*output*/) {}
+    virtual void flush_local(DataBufferList& /*output*/) {}
+    virtual void flush_remote(DataBufferList& /*output*/) {}
 };
 
 } // namespace msg801::tunnel

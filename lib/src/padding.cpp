@@ -10,8 +10,7 @@ PaddingProcessor::PaddingProcessor(size_t chunk_size, size_t pad_max, uint64_t s
     , remote_rng_(seed ^ 0x9e3779b97f4a7c15ULL)
 {}
 
-void PaddingProcessor::on_local_data(std::span<const char> input,
-                                     std::vector<DataBuffer>& output)
+void PaddingProcessor::on_local_data(ByteSpan input, DataBufferList& output)
 {
     if (reverse_) {
         decode(input, local_decode_buf_, output);
@@ -20,8 +19,7 @@ void PaddingProcessor::on_local_data(std::span<const char> input,
     }
 }
 
-void PaddingProcessor::on_remote_data(std::span<const char> input,
-                                      std::vector<DataBuffer>& output)
+void PaddingProcessor::on_remote_data(ByteSpan input, DataBufferList& output)
 {
     if (reverse_) {
         encode(input, remote_rng_, output);
@@ -30,25 +28,25 @@ void PaddingProcessor::on_remote_data(std::span<const char> input,
     }
 }
 
-void PaddingProcessor::write_u32(std::vector<char>& out, uint32_t v)
+void PaddingProcessor::write_u32(ByteVector& out, uint32_t v)
 {
-    out.push_back(static_cast<char>((v >> 24) & 0xff));
-    out.push_back(static_cast<char>((v >> 16) & 0xff));
-    out.push_back(static_cast<char>((v >> 8) & 0xff));
-    out.push_back(static_cast<char>(v & 0xff));
+    out.push_back(static_cast<Byte>((v >> 24) & 0xff));
+    out.push_back(static_cast<Byte>((v >> 16) & 0xff));
+    out.push_back(static_cast<Byte>((v >> 8) & 0xff));
+    out.push_back(static_cast<Byte>(v & 0xff));
 }
 
-uint32_t PaddingProcessor::read_u32(const char* p)
+uint32_t PaddingProcessor::read_u32(const Byte* p)
 {
-    return (static_cast<uint32_t>(static_cast<unsigned char>(p[0])) << 24)
-         | (static_cast<uint32_t>(static_cast<unsigned char>(p[1])) << 16)
-         | (static_cast<uint32_t>(static_cast<unsigned char>(p[2])) << 8)
-         | (static_cast<uint32_t>(static_cast<unsigned char>(p[3])));
+    return (static_cast<uint32_t>(p[0]) << 24)
+         | (static_cast<uint32_t>(p[1]) << 16)
+         | (static_cast<uint32_t>(p[2]) << 8)
+         | static_cast<uint32_t>(p[3]);
 }
 
-void PaddingProcessor::encode(std::span<const char> input,
+void PaddingProcessor::encode(ByteSpan input,
                               std::mt19937_64& rng,
-                              std::vector<DataBuffer>& output)
+                              DataBufferList& output)
 {
     size_t pos = 0;
     std::uniform_int_distribution<uint32_t> pad_dist(0, static_cast<uint32_t>(pad_max_));
@@ -67,7 +65,7 @@ void PaddingProcessor::encode(std::span<const char> input,
                           input.begin() + static_cast<std::ptrdiff_t>(pos + payload_len));
 
         for (uint32_t i = 0; i < pad_len; ++i) {
-            frame.data.push_back(static_cast<char>(byte_dist(rng)));
+            frame.data.push_back(static_cast<Byte>(byte_dist(rng)));
         }
 
         output.push_back(std::move(frame));
@@ -75,9 +73,9 @@ void PaddingProcessor::encode(std::span<const char> input,
     }
 }
 
-void PaddingProcessor::decode(std::span<const char> input,
-                              std::vector<char>& acc,
-                              std::vector<DataBuffer>& output)
+void PaddingProcessor::decode(ByteSpan input,
+                              ByteVector& acc,
+                              DataBufferList& output)
 {
     acc.insert(acc.end(), input.begin(), input.end());
 

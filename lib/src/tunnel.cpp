@@ -27,6 +27,7 @@ namespace msg801 {
 namespace {
 
 using namespace std::chrono_literals;
+using tunnel::DataBufferList;
 namespace asio = boost::asio;
 using asio::ip::tcp;
 using asio::co_spawn;
@@ -84,7 +85,9 @@ std::optional<tunnel::ProcessorChain> build_processor_chain(const std::vector<st
                 return std::nullopt;
             }
             bool reverse = kv.count("reverse") ? parse_bool(kv["reverse"]) : false;
-            chain.add(std::make_unique<tunnel::CfbProcessor>(it->second, reverse));
+            ByteVector key_bytes(it->second.begin(), it->second.end());
+            chain.add(std::make_unique<tunnel::CfbProcessor>(
+                ByteSpan(key_bytes), reverse));
         } else if (name == "padding") {
             if (!kv.count("chunk") || !kv.count("max")) {
                 spdlog::error("processor padding requires chunk=<N>,max=<M>");
@@ -185,7 +188,7 @@ using SessionPtr = std::shared_ptr<SessionState>;
 
 asio::awaitable<void> read_local(SessionPtr s)
 {
-    std::array<char, 65536> buf;
+    std::array<Byte, 65536> buf;
     while (!s->closed) {
         std::size_t n;
         try {
@@ -198,7 +201,7 @@ asio::awaitable<void> read_local(SessionPtr s)
                 s->remote_sock.shutdown(tcp::socket::shutdown_send, ignore);
 
                 {
-                    std::vector<tunnel::DataBuffer> flushed;
+                    DataBufferList flushed;
                     s->chain.flush_local(flushed);
                     for (auto& out : flushed) {
                         try {
@@ -222,8 +225,8 @@ asio::awaitable<void> read_local(SessionPtr s)
             co_return;
         }
 
-        std::vector<tunnel::DataBuffer> output;
-        s->chain.on_local_data(std::span<const char>(buf.data(), n), output);
+        DataBufferList output;
+        s->chain.on_local_data(ByteSpan(buf.data(), n), output);
 
         for (auto& out : output) {
             try {
@@ -239,7 +242,7 @@ asio::awaitable<void> read_local(SessionPtr s)
 
 asio::awaitable<void> read_remote(SessionPtr s)
 {
-    std::array<char, 65536> buf;
+    std::array<Byte, 65536> buf;
     while (!s->closed) {
         std::size_t n;
         try {
@@ -252,7 +255,7 @@ asio::awaitable<void> read_remote(SessionPtr s)
                 s->local_sock.shutdown(tcp::socket::shutdown_send, ignore);
 
                 {
-                    std::vector<tunnel::DataBuffer> flushed;
+                    DataBufferList flushed;
                     s->chain.flush_remote(flushed);
                     for (auto& out : flushed) {
                         try {
@@ -276,8 +279,8 @@ asio::awaitable<void> read_remote(SessionPtr s)
             co_return;
         }
 
-        std::vector<tunnel::DataBuffer> output;
-        s->chain.on_remote_data(std::span<const char>(buf.data(), n), output);
+        DataBufferList output;
+        s->chain.on_remote_data(ByteSpan(buf.data(), n), output);
 
         for (auto& out : output) {
             try {

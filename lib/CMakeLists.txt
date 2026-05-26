@@ -36,6 +36,7 @@ set_target_properties(msg801
 )
 
 target_link_libraries(msg801 PUBLIC Boost::boost Threads::Threads)
+target_link_libraries(msg801 PRIVATE OpenSSL::SSL OpenSSL::Crypto)
 
 cxx_project_preset(msg801)
 warning_as_error_enable(msg801)

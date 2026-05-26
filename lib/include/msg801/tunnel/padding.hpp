@@ -1,8 +1,8 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <random>
-#include <span>
 #include <vector>
 
 #include <msg801/tunnel/processor.hpp>
@@ -13,11 +13,9 @@ class PaddingProcessor : public Processor {
 public:
     PaddingProcessor(size_t chunk_size, size_t pad_max, uint64_t seed, bool reverse = false);
 
-    void on_local_data(std::span<const char> input,
-                       std::vector<DataBuffer>& output) override;
+    void on_local_data(ByteSpan input, DataBufferList& output) override;
 
-    void on_remote_data(std::span<const char> input,
-                        std::vector<DataBuffer>& output) override;
+    void on_remote_data(ByteSpan input, DataBufferList& output) override;
 
 private:
     size_t chunk_size_;
@@ -25,19 +23,15 @@ private:
     bool reverse_;
     std::mt19937_64 local_rng_;
     std::mt19937_64 remote_rng_;
-    std::vector<char> local_decode_buf_;
-    std::vector<char> remote_decode_buf_;
+    ByteVector local_decode_buf_;
+    ByteVector remote_decode_buf_;
 
-    static void write_u32(std::vector<char>& out, uint32_t v);
-    static uint32_t read_u32(const char* p);
+    static void write_u32(ByteVector& out, uint32_t v);
+    static uint32_t read_u32(const Byte* p);
 
-    void encode(std::span<const char> input,
-                std::mt19937_64& rng,
-                std::vector<DataBuffer>& output);
+    void encode(ByteSpan input, std::mt19937_64& rng, DataBufferList& output);
 
-    void decode(std::span<const char> input,
-                std::vector<char>& acc,
-                std::vector<DataBuffer>& output);
+    void decode(ByteSpan input, ByteVector& acc, DataBufferList& output);
 };
 
 } // namespace msg801::tunnel

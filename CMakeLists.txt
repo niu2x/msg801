@@ -8,6 +8,7 @@ include(warning_as_error)
 
 find_package(Boost 1.83 REQUIRED COMPONENTS program_options)
 find_package(Threads REQUIRED)
+find_package(OpenSSL 1.1 REQUIRED)
 
 add_subdirectory(lib)
 add_subdirectory(cli)
