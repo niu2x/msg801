@@ -1,0 +1,95 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.name }}
+    runs-on: ${{ matrix.runs_on }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-x86_64
+            runs_on: ubuntu-24.04
+            archive_name: msg801-linux-x86_64.tar.gz
+          - name: linux-x86_64-ubuntu22
+            runs_on: ubuntu-22.04
+            archive_name: msg801-linux-x86_64-ubuntu22.tar.gz
+          - name: macos-arm64
+            runs_on: macos-14
+            archive_name: msg801-macos-arm64.tar.gz
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies (Ubuntu)
+        if: startsWith(matrix.runs_on, 'ubuntu-')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake pkg-config libssl-dev curl
+
+      - name: Cache Boost 1.83 (Ubuntu)
+        if: startsWith(matrix.runs_on, 'ubuntu-')
+        id: cache-boost
+        uses: actions/cache@v4
+        with:
+          path: ~/boost-1.83
+          key: boost-1.83.0-${{ runner.os }}-${{ matrix.runs_on }}
+
+      - name: Install Boost 1.83 (Ubuntu)
+        if: startsWith(matrix.runs_on, 'ubuntu-') && steps.cache-boost.outputs.cache-hit != 'true'
+        run: |
+          curl -L -o /tmp/boost_1_83_0.tar.gz https://archives.boost.io/release/1.83.0/source/boost_1_83_0.tar.gz
+          tar -xf /tmp/boost_1_83_0.tar.gz -C /tmp
+          /tmp/boost_1_83_0/bootstrap.sh --prefix="$HOME/boost-1.83" --with-libraries=program_options
+          /tmp/boost_1_83_0/b2 install -j 4
+
+      - name: Install dependencies (macOS)
+        if: startsWith(matrix.runs_on, 'macos-')
+        run: |
+          brew update
+          brew install cmake openssl boost
+
+      - name: Configure (Ubuntu)
+        if: startsWith(matrix.runs_on, 'ubuntu-')
+        run: >-
+          cmake -B build
+          -DCMAKE_BUILD_TYPE=Release
+          -DMSG801_BUILD_SHARED=OFF
+          -DBoost_ROOT=$HOME/boost-1.83
+
+      - name: Configure (macOS)
+        if: startsWith(matrix.runs_on, 'macos-')
+        run: >-
+          cmake -B build
+          -DCMAKE_BUILD_TYPE=Release
+          -DMSG801_BUILD_SHARED=OFF
+
+      - name: Build
+        run: cmake --build build -j 4
+
+      - name: Install
+        run: cmake --install build --prefix dist
+
+      - name: Package
+        run: |
+          mkdir -p release
+          cp README.md release/
+          mkdir -p release/bin
+          cp dist/bin/msg801 release/bin/
+          tar -czf "${{ matrix.archive_name }}" -C release .
+
+      - name: Upload release asset
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: ${{ matrix.archive_name }}
