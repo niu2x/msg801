@@ -489,6 +489,70 @@ if "$TUNNEL_BIN" tunnel --help 2>/dev/null | grep -q processor; then
     run_padding_cfb_tests
 fi
 
+# padding+cfb_nonce pipeline two-hop tests: A(cfb_nonce→pad) → B(unpad→decfb_nonce) → echo
+PNC_ECHO_PORT=19985
+PNC_DECODE_PORT=19984
+PNC_LISTEN_PORT=${14:-19983}
+PNC_IV="${15:-pipeline-nonce-iv}"
+PNC_HMAC_KEY="${16:-pipeline-nonce-secret}"
+
+run_padding_cfb_nonce_tests() {
+    echo ""
+    echo "--- padding+cfb_nonce pipeline two-hop tests ---"
+
+    local ok1=true
+    result=$(send_recv_to "$PNC_LISTEN_PORT" "hello pad+cfb_nonce")
+    [[ "$result" = "hello pad+cfb_nonce" ]] || ok1=false
+    check "pad+cfb_nonce short message" "[[ '$ok1' = 'true' ]]"
+
+    local ok2=true
+    result=$(send_recv_to "$PNC_LISTEN_PORT" "")
+    [[ "$result" = "" ]] || ok2=false
+    check "pad+cfb_nonce empty message" "[[ '$ok2' = 'true' ]]"
+
+    local ok3=true
+    data=$(head -c 10240 /dev/urandom | base64 -w0)
+    result=$(send_recv_to "$PNC_LISTEN_PORT" "$data")
+    [[ "$result" = "$data" ]] || ok3=false
+    check "pad+cfb_nonce 10KB payload" "[[ '$ok3' = 'true' ]]"
+
+    local ok4=true
+    data=$(head -c 65536 /dev/urandom | base64 -w0)
+    result=$(send_recv_to "$PNC_LISTEN_PORT" "$data")
+    [[ "$result" = "$data" ]] || ok4=false
+    check "pad+cfb_nonce 64KB payload" "[[ '$ok4' = 'true' ]]"
+
+    local ok5=true
+    data=$(head -c 1024 /dev/urandom | base64 -w0)
+    concurrent_test 16 "$PNC_LISTEN_PORT" "$data" || ok5=false
+    check "pad+cfb_nonce 16 concurrent 1KB" "[[ '$ok5' = 'true' ]]"
+
+    local ok6=true
+    result=$(send_recv_to "$PNC_LISTEN_PORT" "ping")
+    [[ "$result" = "ping" ]] || ok6=false
+    check "pad+cfb_nonce tunnel still alive" "[[ '$ok6' = 'true' ]]"
+}
+
+if "$TUNNEL_BIN" tunnel --help 2>/dev/null | grep -q processor; then
+    start_echo "$PNC_ECHO_PORT"
+    sleep 0.5
+
+    "$TUNNEL_BIN" tunnel \
+        --listen "127.0.0.1:$PNC_DECODE_PORT" \
+        --remote "127.0.0.1:$PNC_ECHO_PORT" \
+        --processor "padding:chunk=1024,max=64,reverse=1" \
+        --processor "cfb_nonce:iv=$PNC_IV,hmac_key=$PNC_HMAC_KEY,reverse=1" &
+
+    "$TUNNEL_BIN" tunnel \
+        --listen "127.0.0.1:$PNC_LISTEN_PORT" \
+        --remote "127.0.0.1:$PNC_DECODE_PORT" \
+        --processor "cfb_nonce:iv=$PNC_IV,hmac_key=$PNC_HMAC_KEY" \
+        --processor "padding:chunk=1024,max=64" &
+    sleep 0.5
+
+    run_padding_cfb_nonce_tests
+fi
+
 echo ""
 echo "=== result: $PASS passed, $FAIL failed ==="
 exit $FAIL
