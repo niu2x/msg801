@@ -140,6 +140,8 @@ stdout_logfile=/var/log/msg801/b-out.log
 - `identity`
 - `cfb:key=secret`
 - `cfb:key=secret,reverse=1`
+- `cfb_nonce:iv=seed-iv,hmac_key=shared-secret`
+- `cfb_nonce:iv=seed-iv,hmac_key=shared-secret,reverse=1`
 - `padding:chunk=1024,max=64,seed=42`
 - `padding:chunk=1024,max=64,seed=42,reverse=1`
 

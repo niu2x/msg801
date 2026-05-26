@@ -90,6 +90,19 @@ std::optional<tunnel::ProcessorChain> build_processor_chain(const std::vector<st
             ByteVector key_bytes(it->second.begin(), it->second.end());
             chain.add(std::make_unique<tunnel::CfbProcessor>(
                 ByteSpan(key_bytes), reverse));
+        } else if (name == "cfb_nonce") {
+            auto iv_it = kv.find("iv");
+            auto hmac_key_it = kv.find("hmac_key");
+            if (iv_it == kv.end() || iv_it->second.empty() ||
+                hmac_key_it == kv.end() || hmac_key_it->second.empty()) {
+                spdlog::error("processor cfb_nonce requires iv=<...>,hmac_key=<...>");
+                return std::nullopt;
+            }
+            bool reverse = kv.count("reverse") ? parse_bool(kv["reverse"]) : false;
+            ByteVector iv_bytes(iv_it->second.begin(), iv_it->second.end());
+            ByteVector hmac_key_bytes(hmac_key_it->second.begin(), hmac_key_it->second.end());
+            chain.add(std::make_unique<tunnel::CfbNonceProcessor>(
+                ByteSpan(iv_bytes), ByteSpan(hmac_key_bytes), reverse));
         } else if (name == "padding") {
             if (!kv.count("chunk") || !kv.count("max")) {
                 spdlog::error("processor padding requires chunk=<N>,max=<M>");

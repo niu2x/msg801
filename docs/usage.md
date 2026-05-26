@@ -63,6 +63,7 @@ name[:k=v,k=v,...]
 
 - `identity`
 - `cfb:key=<str>[,reverse=0|1]`
+- `cfb_nonce:iv=<str>,hmac_key=<str>[,reverse=0|1]`
 - `padding:chunk=<N>,max=<M>[,seed=<u64>][,reverse=0|1]`
 
 ### 各处理器参数说明
@@ -96,6 +97,24 @@ name[:k=v,k=v,...]
 - `reverse`：是否反转该节点的编/解帧角色（可选，默认 `0`）
   - `0`：入口常规角色（local 编帧加填充，remote 解帧去填充）
   - `1`：出口反向角色（local 解帧去填充，remote 编帧加填充）
+
+#### `cfb_nonce`
+
+格式：`cfb_nonce:iv=<str>,hmac_key=<str>[,reverse=0|1]`
+
+- `iv`：基础 IV 字节串（必填）
+  - 仅用于与每连接随机 nonce 拼接后做 SHA-512，派生实际 CFB IV
+- `hmac_key`：握手认证密钥（必填）
+  - 用于握手认证：`tag = hmac_sha256(nonce, hmac_key)`
+- `reverse`：是否反转该节点的加/解密角色（可选，默认 `0`）
+  - `0`：入口常规角色（local->remote 加密，remote->local 解密）
+  - `1`：出口反向角色（local->remote 解密，remote->local 加密）
+
+握手行为（每连接一次）：
+
+- 首次 `on_local_data` 前会先发送固定长度握手包：`tag(32B) + nonce(512B)`，其中 `tag = hmac_sha256(nonce, hmac_key)`
+- 然后用 `sha512(nonce || iv)` 作为该方向的真实 IV，继续按 CFB 逻辑处理业务流
+- 首次 `on_remote_data` 会先消费并校验对端握手包，HMAC 不合法则直接断开连接
 
 ### pipeline 顺序规则
 

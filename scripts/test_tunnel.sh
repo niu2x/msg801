@@ -248,6 +248,45 @@ sys.exit(0)
     check "xor 20 pipelined chunks" "[[ $ok7 = true ]]"
 }
 
+# ---- cfb_nonce two-hop test: A(encrypt) -> B(decrypt) -> echo ----
+
+run_cfb_nonce_tests() {
+    echo ""
+    echo "--- cfb_nonce two-hop tests (A encrypt -> B decrypt) ---"
+
+    local ok1=true
+    result=$(send_recv_to "$CFB_NONCE_LISTEN_PORT" "hello cfb_nonce")
+    [[ "$result" = "hello cfb_nonce" ]] || ok1=false
+    check "cfb_nonce short message" "[[ '$ok1' = 'true' ]]"
+
+    local ok2=true
+    result=$(send_recv_to "$CFB_NONCE_LISTEN_PORT" "")
+    [[ "$result" = "" ]] || ok2=false
+    check "cfb_nonce empty message" "[[ '$ok2' = 'true' ]]"
+
+    local ok3=true
+    data=$(head -c 10240 /dev/urandom | base64 -w0)
+    result=$(send_recv_to "$CFB_NONCE_LISTEN_PORT" "$data")
+    [[ "$result" = "$data" ]] || ok3=false
+    check "cfb_nonce 10KB payload" "[[ '$ok3' = 'true' ]]"
+
+    local ok4=true
+    data=$(head -c 65536 /dev/urandom | base64 -w0)
+    result=$(send_recv_to "$CFB_NONCE_LISTEN_PORT" "$data")
+    [[ "$result" = "$data" ]] || ok4=false
+    check "cfb_nonce 64KB payload" "[[ '$ok4' = 'true' ]]"
+
+    local ok5=true
+    data=$(head -c 1024 /dev/urandom | base64 -w0)
+    concurrent_test 16 "$CFB_NONCE_LISTEN_PORT" "$data" || ok5=false
+    check "cfb_nonce 16 concurrent 1KB" "[[ '$ok5' = 'true' ]]"
+
+    local ok6=true
+    result=$(send_recv_to "$CFB_NONCE_LISTEN_PORT" "ping")
+    [[ "$result" = "ping" ]] || ok6=false
+    check "cfb_nonce tunnel still alive" "[[ '$ok6' = 'true' ]]"
+}
+
 # ---- padding two-hop test: A(pad encode) → B(pad decode) → echo ----
 
 run_padding_tests() {
@@ -333,6 +372,33 @@ if "$TUNNEL_BIN" tunnel --help 2>/dev/null | grep -q processor; then
     sleep 0.5
 
     run_xor_tests
+fi
+
+# cfb_nonce two-hop tests: A(encrypt) -> B(decrypt) -> echo
+CFB_NONCE_ECHO_PORT=19988
+CFB_NONCE_DECODE_PORT=19987
+CFB_NONCE_LISTEN_PORT=${11:-19986}
+CFB_NONCE_IV="${12:-nonce-seed-iv}"
+CFB_NONCE_HMAC_KEY="${13:-nonce-shared-secret}"
+
+if "$TUNNEL_BIN" tunnel --help 2>/dev/null | grep -q processor; then
+    start_echo "$CFB_NONCE_ECHO_PORT"
+    sleep 0.5
+
+    # Tunnel B: exit node (decrypt local, encrypt remote)
+    "$TUNNEL_BIN" tunnel \
+        --listen "127.0.0.1:$CFB_NONCE_DECODE_PORT" \
+        --remote "127.0.0.1:$CFB_NONCE_ECHO_PORT" \
+        --processor "cfb_nonce:iv=$CFB_NONCE_IV,hmac_key=$CFB_NONCE_HMAC_KEY,reverse=1" &
+
+    # Tunnel A: encrypt side (CFB_NONCE encode), listen external -> B
+    "$TUNNEL_BIN" tunnel \
+        --listen "127.0.0.1:$CFB_NONCE_LISTEN_PORT" \
+        --remote "127.0.0.1:$CFB_NONCE_DECODE_PORT" \
+        --processor "cfb_nonce:iv=$CFB_NONCE_IV,hmac_key=$CFB_NONCE_HMAC_KEY" &
+    sleep 0.5
+
+    run_cfb_nonce_tests
 fi
 
 # padding two-hop tests: A(pad encode) → B(pad decode) → echo
