@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Integration test for TCP tunnel
 set -euo pipefail
-trap 'kill 0 2>/dev/null; wait 2>/dev/null' EXIT
+trap 'kill $(jobs -p) 2>/dev/null; wait 2>/dev/null' EXIT
 
 TUNNEL_BIN="${1:-./dist/bin/msg801}"
 TUNNEL_PORT="${2:-19999}"
