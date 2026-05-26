@@ -10,9 +10,12 @@ add_executable(msg801-cli
     src/main.cpp
 )
 
+target_include_directories(msg801-cli PRIVATE
+    ${CMAKE_SOURCE_DIR}/third_party
+)
+
 target_link_libraries(msg801-cli PRIVATE
     msg801
-    Boost::program_options
 )
 
 set_target_properties(msg801-cli PROPERTIES

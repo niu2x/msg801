@@ -6,9 +6,9 @@
 
 namespace msg801 {
 
-using Byte = uint8_t;
-using ByteSpan = std::span<const Byte>;
+using Byte            = uint8_t;
+using ByteSpan        = std::span<const Byte>;
 using MutableByteSpan = std::span<Byte>;
-using ByteVector = std::vector<Byte>;
+using ByteVector      = std::vector<Byte>;
 
 } // namespace msg801

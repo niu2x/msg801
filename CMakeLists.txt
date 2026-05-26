@@ -8,7 +8,7 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 include(cxx_project)
 include(warning_as_error)
 
-find_package(Boost 1.83 REQUIRED COMPONENTS program_options)
+find_package(Boost 1.83 REQUIRED)
 find_package(Threads REQUIRED)
 find_package(OpenSSL 1.1 REQUIRED)
 

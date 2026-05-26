@@ -23,7 +23,7 @@ target_include_directories(msg801
         $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
     PRIVATE
-        ${CMAKE_SOURCE_DIR}/thirdparty/spdlog
+        ${CMAKE_SOURCE_DIR}/third_party/spdlog
 )
 
 include(GenerateExportHeader)

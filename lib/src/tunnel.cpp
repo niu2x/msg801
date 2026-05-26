@@ -31,17 +31,17 @@ namespace {
 using namespace std::chrono_literals;
 using tunnel::DataBufferList;
 namespace asio = boost::asio;
-using asio::ip::tcp;
 using asio::co_spawn;
 using asio::detached;
-using asio::use_awaitable;
 using asio::redirect_error;
+using asio::use_awaitable;
+using asio::ip::tcp;
 
 std::vector<std::string> split(const std::string& s, char delim)
 {
     std::vector<std::string> out;
-    std::stringstream ss(s);
-    std::string item;
+    std::stringstream        ss(s);
+    std::string              item;
     while (std::getline(ss, item, delim)) {
         out.push_back(item);
     }
@@ -53,7 +53,8 @@ std::unordered_map<std::string, std::string> parse_kv(const std::string& s)
     std::unordered_map<std::string, std::string> out;
     for (const auto& item : split(s, ',')) {
         auto eq = item.find('=');
-        if (eq == std::string::npos) continue;
+        if (eq == std::string::npos)
+            continue;
         out[item.substr(0, eq)] = item.substr(eq + 1);
     }
     return out;
@@ -73,10 +74,10 @@ std::optional<tunnel::ProcessorChain> build_processor_chain(const std::vector<st
     }
 
     for (const auto& spec : specs) {
-        auto colon = spec.find(':');
-        std::string name = colon == std::string::npos ? spec : spec.substr(0, colon);
-        std::string args = colon == std::string::npos ? std::string{} : spec.substr(colon + 1);
-        auto kv = parse_kv(args);
+        auto        colon = spec.find(':');
+        std::string name  = colon == std::string::npos ? spec : spec.substr(0, colon);
+        std::string args  = colon == std::string::npos ? std::string {} : spec.substr(colon + 1);
+        auto        kv    = parse_kv(args);
 
         if (name == "identity") {
             chain.add(std::make_unique<tunnel::IdentityProcessor>());
@@ -86,31 +87,32 @@ std::optional<tunnel::ProcessorChain> build_processor_chain(const std::vector<st
                 spdlog::error("processor cfb requires key=<...>");
                 return std::nullopt;
             }
-            bool reverse = kv.count("reverse") ? parse_bool(kv["reverse"]) : false;
+            bool       reverse = kv.count("reverse") ? parse_bool(kv["reverse"]) : false;
             ByteVector key_bytes(it->second.begin(), it->second.end());
-            chain.add(std::make_unique<tunnel::CfbProcessor>(
-                ByteSpan(key_bytes), reverse));
+            chain.add(std::make_unique<tunnel::CfbProcessor>(ByteSpan(key_bytes), reverse));
         } else if (name == "cfb_nonce") {
-            auto iv_it = kv.find("iv");
+            auto iv_it       = kv.find("iv");
             auto hmac_key_it = kv.find("hmac_key");
-            if (iv_it == kv.end() || iv_it->second.empty() ||
-                hmac_key_it == kv.end() || hmac_key_it->second.empty()) {
+            if (iv_it == kv.end() || iv_it->second.empty() || hmac_key_it == kv.end()
+                || hmac_key_it->second.empty()) {
                 spdlog::error("processor cfb_nonce requires iv=<...>,hmac_key=<...>");
                 return std::nullopt;
             }
-            bool reverse = kv.count("reverse") ? parse_bool(kv["reverse"]) : false;
+            bool       reverse = kv.count("reverse") ? parse_bool(kv["reverse"]) : false;
             ByteVector iv_bytes(iv_it->second.begin(), iv_it->second.end());
             ByteVector hmac_key_bytes(hmac_key_it->second.begin(), hmac_key_it->second.end());
-            chain.add(std::make_unique<tunnel::CfbNonceProcessor>(
-                ByteSpan(iv_bytes), ByteSpan(hmac_key_bytes), reverse));
+            chain.add(std::make_unique<tunnel::CfbNonceProcessor>(ByteSpan(iv_bytes),
+                                                                  ByteSpan(hmac_key_bytes),
+                                                                  reverse));
         } else if (name == "padding") {
             if (!kv.count("chunk") || !kv.count("max")) {
                 spdlog::error("processor padding requires chunk=<N>,max=<M>");
                 return std::nullopt;
             }
-            size_t chunk = static_cast<size_t>(std::stoull(kv["chunk"]));
-            size_t max = static_cast<size_t>(std::stoull(kv["max"]));
-            constexpr size_t U32_MAX_AS_SIZE_T = static_cast<size_t>(std::numeric_limits<uint32_t>::max());
+            size_t           chunk             = static_cast<size_t>(std::stoull(kv["chunk"]));
+            size_t           max               = static_cast<size_t>(std::stoull(kv["max"]));
+            constexpr size_t U32_MAX_AS_SIZE_T = static_cast<size_t>(
+                std::numeric_limits<uint32_t>::max());
             if (chunk > U32_MAX_AS_SIZE_T || max > U32_MAX_AS_SIZE_T) {
                 spdlog::error("processor padding requires chunk/max <= {}", U32_MAX_AS_SIZE_T);
                 return std::nullopt;
@@ -121,8 +123,8 @@ std::optional<tunnel::ProcessorChain> build_processor_chain(const std::vector<st
             } else {
                 uint64_t t = static_cast<uint64_t>(
                     std::chrono::high_resolution_clock::now().time_since_epoch().count());
-                uint64_t r = (static_cast<uint64_t>(std::random_device{}()) << 32)
-                           ^ static_cast<uint64_t>(std::random_device{}());
+                uint64_t r = (static_cast<uint64_t>(std::random_device {}()) << 32)
+                             ^ static_cast<uint64_t>(std::random_device {}());
                 seed = t ^ r;
             }
             bool reverse = kv.count("reverse") ? parse_bool(kv["reverse"]) : false;
@@ -148,50 +150,58 @@ std::optional<tunnel::ProcessorChain> build_processor_chain(const std::vector<st
 void log_conn_new(uint64_t id, const tcp::endpoint& src, const tcp::endpoint& dst)
 {
     spdlog::info(R"({{"t":{},"ev":"conn_new","id":{},"src":"{}","dst":"{}"}})",
-                 now_ms(), id, src.address().to_string() + ":" + std::to_string(src.port()),
+                 now_ms(),
+                 id,
+                 src.address().to_string() + ":" + std::to_string(src.port()),
                  dst.address().to_string() + ":" + std::to_string(dst.port()));
 }
 
 void log_conn_close(uint64_t id, uint64_t rx, uint64_t tx, double dur_sec)
 {
     spdlog::info(R"({{"t":{},"ev":"conn_close","id":{},"rx":{},"tx":{},"dur":{:.3}}})",
-                 now_ms(), id, rx, tx, dur_sec);
+                 now_ms(),
+                 id,
+                 rx,
+                 tx,
+                 dur_sec);
 }
 
 void log_stat(uint64_t id, double rx_rate, double tx_rate)
 {
     spdlog::info(R"({{"t":{},"ev":"stat","id":{},"rx_rate":{:.0},"tx_rate":{:.0}}})",
-                 now_ms(), id, rx_rate, tx_rate);
+                 now_ms(),
+                 id,
+                 rx_rate,
+                 tx_rate);
 }
 
 // ---- Session state ----
 
 struct SessionState : std::enable_shared_from_this<SessionState> {
-    uint64_t            id;
-    tcp::socket         local_sock;
-    tcp::socket         remote_sock;
-    uint64_t            rx_bytes = 0;
-    uint64_t            tx_bytes = 0;
-    uint64_t            last_stat_rx = 0;
-    uint64_t            last_stat_tx = 0;
+    uint64_t                              id;
+    tcp::socket                           local_sock;
+    tcp::socket                           remote_sock;
+    uint64_t                              rx_bytes     = 0;
+    uint64_t                              tx_bytes     = 0;
+    uint64_t                              last_stat_rx = 0;
+    uint64_t                              last_stat_tx = 0;
     std::chrono::steady_clock::time_point last_stat_time;
-    bool                local_eof = false;
-    bool                remote_eof = false;
-    bool                closed = false;
-    int                 done_count = 0;
+    bool                                  local_eof  = false;
+    bool                                  remote_eof = false;
+    bool                                  closed     = false;
+    int                                   done_count = 0;
     std::chrono::steady_clock::time_point start;
-    tunnel::ProcessorChain chain;
+    tunnel::ProcessorChain                chain;
 
-    SessionState(asio::io_context& ctx,
-                 tcp::socket local,
-                 tunnel::ProcessorChain proc_chain)
-        : id(0)
-        , local_sock(std::move(local))
-        , remote_sock(ctx)
-        , last_stat_time(std::chrono::steady_clock::now())
-        , start(std::chrono::steady_clock::now())
-        , chain(std::move(proc_chain))
-    {}
+    SessionState(asio::io_context& ctx, tcp::socket local, tunnel::ProcessorChain proc_chain)
+    : id(0),
+      local_sock(std::move(local)),
+      remote_sock(ctx),
+      last_stat_time(std::chrono::steady_clock::now()),
+      start(std::chrono::steady_clock::now()),
+      chain(std::move(proc_chain))
+    {
+    }
 
     void close_all()
     {
@@ -211,8 +221,9 @@ asio::awaitable<void> read_local(SessionPtr s)
     std::array<Byte, 65536> buf;
     while (!s->closed) {
         boost::system::error_code read_ec;
-        std::size_t n = co_await s->local_sock.async_read_some(
-            asio::buffer(buf), redirect_error(use_awaitable, read_ec));
+        std::size_t               n = co_await s->local_sock.async_read_some(
+            asio::buffer(buf),
+            redirect_error(use_awaitable, read_ec));
         if (read_ec) {
             if (read_ec == asio::error::eof) {
                 s->local_eof = true;
@@ -223,7 +234,9 @@ asio::awaitable<void> read_local(SessionPtr s)
                 s->chain.flush_local(flushed);
                 for (auto& out : flushed) {
                     try {
-                        co_await asio::async_write(s->remote_sock, asio::buffer(out.data), use_awaitable);
+                        co_await asio::async_write(s->remote_sock,
+                                                   asio::buffer(out.data),
+                                                   use_awaitable);
                         s->tx_bytes += out.data.size();
                     } catch (...) {
                         s->close_all();
@@ -237,7 +250,8 @@ asio::awaitable<void> read_local(SessionPtr s)
             } else if (read_ec == asio::error::operation_aborted) {
                 // cancelled by remote-side error, nothing to do
             } else {
-                if (!s->closed) s->close_all();
+                if (!s->closed)
+                    s->close_all();
             }
             co_return;
         }
@@ -247,8 +261,10 @@ asio::awaitable<void> read_local(SessionPtr s)
             s->chain.on_local_data(ByteSpan(buf.data(), n), output);
         } catch (const std::exception& e) {
             spdlog::warn("close session id={} due to invalid local stream data: {}",
-                         s->id, e.what());
-            if (!s->closed) s->close_all();
+                         s->id,
+                         e.what());
+            if (!s->closed)
+                s->close_all();
             co_return;
         }
 
@@ -257,7 +273,8 @@ asio::awaitable<void> read_local(SessionPtr s)
                 co_await asio::async_write(s->remote_sock, asio::buffer(out.data), use_awaitable);
                 s->tx_bytes += out.data.size();
             } catch (...) {
-                if (!s->closed) s->close_all();
+                if (!s->closed)
+                    s->close_all();
                 co_return;
             }
         }
@@ -269,8 +286,9 @@ asio::awaitable<void> read_remote(SessionPtr s)
     std::array<Byte, 65536> buf;
     while (!s->closed) {
         boost::system::error_code read_ec;
-        std::size_t n = co_await s->remote_sock.async_read_some(
-            asio::buffer(buf), redirect_error(use_awaitable, read_ec));
+        std::size_t               n = co_await s->remote_sock.async_read_some(
+            asio::buffer(buf),
+            redirect_error(use_awaitable, read_ec));
         if (read_ec) {
             if (read_ec == asio::error::eof) {
                 s->remote_eof = true;
@@ -281,7 +299,9 @@ asio::awaitable<void> read_remote(SessionPtr s)
                 s->chain.flush_remote(flushed);
                 for (auto& out : flushed) {
                     try {
-                        co_await asio::async_write(s->local_sock, asio::buffer(out.data), use_awaitable);
+                        co_await asio::async_write(s->local_sock,
+                                                   asio::buffer(out.data),
+                                                   use_awaitable);
                         s->rx_bytes += out.data.size();
                     } catch (...) {
                         s->close_all();
@@ -295,7 +315,8 @@ asio::awaitable<void> read_remote(SessionPtr s)
             } else if (read_ec == asio::error::operation_aborted) {
                 // cancelled by local-side error, nothing to do
             } else {
-                if (!s->closed) s->close_all();
+                if (!s->closed)
+                    s->close_all();
             }
             co_return;
         }
@@ -305,8 +326,10 @@ asio::awaitable<void> read_remote(SessionPtr s)
             s->chain.on_remote_data(ByteSpan(buf.data(), n), output);
         } catch (const std::exception& e) {
             spdlog::warn("close session id={} due to invalid remote stream data: {}",
-                         s->id, e.what());
-            if (!s->closed) s->close_all();
+                         s->id,
+                         e.what());
+            if (!s->closed)
+                s->close_all();
             co_return;
         }
 
@@ -315,7 +338,8 @@ asio::awaitable<void> read_remote(SessionPtr s)
                 co_await asio::async_write(s->local_sock, asio::buffer(out.data), use_awaitable);
                 s->rx_bytes += out.data.size();
             } catch (...) {
-                if (!s->closed) s->close_all();
+                if (!s->closed)
+                    s->close_all();
                 co_return;
             }
         }
@@ -326,20 +350,21 @@ asio::awaitable<void> read_remote(SessionPtr s)
 
 asio::awaitable<void> stat_loop(SessionPtr s)
 {
-    asio::steady_timer timer{co_await asio::this_coro::executor};
+    asio::steady_timer timer { co_await asio::this_coro::executor };
     while (true) {
         timer.expires_after(5s);
         boost::system::error_code ec;
         co_await timer.async_wait(redirect_error(use_awaitable, ec));
-        if (ec || s->closed) co_return;
+        if (ec || s->closed)
+            co_return;
 
         auto now = std::chrono::steady_clock::now();
-        auto dt = std::chrono::duration<double>(now - s->last_stat_time).count();
+        auto dt  = std::chrono::duration<double>(now - s->last_stat_time).count();
         if (dt > 0) {
-            double rx_rate = (s->rx_bytes - s->last_stat_rx) / dt;
-            double tx_rate = (s->tx_bytes - s->last_stat_tx) / dt;
-            s->last_stat_rx = s->rx_bytes;
-            s->last_stat_tx = s->tx_bytes;
+            double rx_rate    = (s->rx_bytes - s->last_stat_rx) / dt;
+            double tx_rate    = (s->tx_bytes - s->last_stat_tx) / dt;
+            s->last_stat_rx   = s->rx_bytes;
+            s->last_stat_tx   = s->tx_bytes;
             s->last_stat_time = now;
             log_stat(s->id, rx_rate, tx_rate);
         }
@@ -352,8 +377,7 @@ void start_session(SessionPtr s)
 {
     auto on_done = [s](std::exception_ptr) {
         if (++s->done_count == 2) {
-            auto dur = std::chrono::duration<double>(
-                           std::chrono::steady_clock::now() - s->start)
+            auto dur = std::chrono::duration<double>(std::chrono::steady_clock::now() - s->start)
                            .count();
             log_conn_close(s->id, s->rx_bytes, s->tx_bytes, dur);
         }
@@ -364,14 +388,14 @@ void start_session(SessionPtr s)
     co_spawn(s->local_sock.get_executor(), stat_loop(s), detached);
 }
 
-asio::awaitable<void> do_accept(asio::io_context& ctx,
-                                tcp::acceptor acceptor,
-                                tcp::endpoint remote_ep,
+asio::awaitable<void> do_accept(asio::io_context&        ctx,
+                                tcp::acceptor            acceptor,
+                                tcp::endpoint            remote_ep,
                                 std::vector<std::string> processor_specs)
 {
     uint64_t next_id = 0;
     while (true) {
-        tcp::socket local{ctx};
+        tcp::socket local { ctx };
         try {
             co_await acceptor.async_accept(local, use_awaitable);
         } catch (...) {
@@ -388,7 +412,7 @@ asio::awaitable<void> do_accept(asio::io_context& ctx,
         auto chain = std::move(chain_opt.value());
 
         auto s = std::make_shared<SessionState>(ctx, std::move(local), std::move(chain));
-        s->id = id;
+        s->id  = id;
 
         try {
             co_await s->remote_sock.async_connect(remote_ep, use_awaitable);
@@ -406,7 +430,8 @@ asio::awaitable<void> do_accept(asio::io_context& ctx,
 
 // ---- Public API ----
 
-void run_tunnel(std::string_view listen_addr, std::string_view remote_addr,
+void run_tunnel(std::string_view                listen_addr,
+                std::string_view                remote_addr,
                 const std::vector<std::string>& processor_specs)
 {
     auto colon1 = listen_addr.rfind(':');
@@ -422,8 +447,10 @@ void run_tunnel(std::string_view listen_addr, std::string_view remote_addr,
     uint16_t    remote_port = 0;
 
     try {
-        listen_port = static_cast<uint16_t>(std::stoul(std::string(listen_addr.substr(colon1 + 1))));
-        remote_port = static_cast<uint16_t>(std::stoul(std::string(remote_addr.substr(colon2 + 1))));
+        listen_port = static_cast<uint16_t>(
+            std::stoul(std::string(listen_addr.substr(colon1 + 1))));
+        remote_port = static_cast<uint16_t>(
+            std::stoul(std::string(remote_addr.substr(colon2 + 1))));
     } catch (...) {
         spdlog::error("Invalid port number");
         return;
@@ -431,15 +458,17 @@ void run_tunnel(std::string_view listen_addr, std::string_view remote_addr,
 
     asio::io_context ctx;
 
-    tcp::endpoint local_ep{asio::ip::make_address(listen_ip), listen_port};
-    tcp::endpoint remote_ep{asio::ip::make_address(remote_ip), remote_port};
+    tcp::endpoint local_ep { asio::ip::make_address(listen_ip), listen_port };
+    tcp::endpoint remote_ep { asio::ip::make_address(remote_ip), remote_port };
 
-    tcp::acceptor acceptor{ctx, local_ep};
+    tcp::acceptor acceptor { ctx, local_ep };
     spdlog::info("Tunnel listening on {}:{} -> {}:{}",
-                 listen_ip, listen_port, remote_ip, remote_port);
+                 listen_ip,
+                 listen_port,
+                 remote_ip,
+                 remote_port);
 
-    co_spawn(ctx, do_accept(ctx, std::move(acceptor), remote_ep,
-                           processor_specs), detached);
+    co_spawn(ctx, do_accept(ctx, std::move(acceptor), remote_ep, processor_specs), detached);
 
     ctx.run();
 }

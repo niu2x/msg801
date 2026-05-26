@@ -5,16 +5,12 @@ namespace msg801::tunnel {
 void ProcessorChain::on_local_data(ByteSpan input, DataBufferList& output)
 {
     if (processors_.empty()) {
-        output.push_back(DataBuffer{
-            .data = ByteVector(input.begin(), input.end())
-        });
+        output.push_back(DataBuffer { .data = ByteVector(input.begin(), input.end()) });
         return;
     }
 
     DataBufferList cur;
-    cur.push_back(DataBuffer{
-        .data = ByteVector(input.begin(), input.end())
-    });
+    cur.push_back(DataBuffer { .data = ByteVector(input.begin(), input.end()) });
 
     for (auto& p : processors_) {
         DataBufferList next;
@@ -29,16 +25,12 @@ void ProcessorChain::on_local_data(ByteSpan input, DataBufferList& output)
 void ProcessorChain::on_remote_data(ByteSpan input, DataBufferList& output)
 {
     if (processors_.empty()) {
-        output.push_back(DataBuffer{
-            .data = ByteVector(input.begin(), input.end())
-        });
+        output.push_back(DataBuffer { .data = ByteVector(input.begin(), input.end()) });
         return;
     }
 
     DataBufferList cur;
-    cur.push_back(DataBuffer{
-        .data = ByteVector(input.begin(), input.end())
-    });
+    cur.push_back(DataBuffer { .data = ByteVector(input.begin(), input.end()) });
 
     for (auto it = processors_.rbegin(); it != processors_.rend(); ++it) {
         DataBufferList next;

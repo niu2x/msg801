@@ -10,7 +10,8 @@
 
 namespace msg801 {
 
-MSG801_API void run_tunnel(std::string_view listen_addr, std::string_view remote_addr,
+MSG801_API void run_tunnel(std::string_view                listen_addr,
+                           std::string_view                remote_addr,
                            const std::vector<std::string>& processor_specs = {});
 
 } // namespace msg801

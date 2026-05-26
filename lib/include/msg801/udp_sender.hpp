@@ -9,10 +9,12 @@
 namespace msg801 {
 
 struct SendResult {
-    bool success;
+    bool        success;
     std::string error;
 };
 
-[[nodiscard]] MSG801_API SendResult send_udp(std::string_view ip, uint16_t port, std::string_view message);
+[[nodiscard]] MSG801_API SendResult send_udp(std::string_view ip,
+                                             uint16_t         port,
+                                             std::string_view message);
 
 } // namespace msg801

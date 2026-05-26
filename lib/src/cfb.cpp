@@ -12,8 +12,8 @@ namespace msg801::tunnel {
 
 namespace {
 
-constexpr size_t NONCE_SIZE = 512;
-constexpr size_t TAG_SIZE = 32;
+constexpr size_t NONCE_SIZE            = 512;
+constexpr size_t TAG_SIZE              = 32;
 constexpr size_t HANDSHAKE_PACKET_SIZE = TAG_SIZE + NONCE_SIZE;
 
 ByteVector digest(ByteSpan input, const EVP_MD* (*md)(), size_t digest_size)
@@ -23,11 +23,11 @@ ByteVector digest(ByteSpan input, const EVP_MD* (*md)(), size_t digest_size)
         throw std::runtime_error("failed to create digest context");
     }
 
-    ByteVector out(digest_size);
+    ByteVector   out(digest_size);
     unsigned int out_len = 0;
-    int ok = EVP_DigestInit_ex(ctx, md(), nullptr)
-          && EVP_DigestUpdate(ctx, input.data(), input.size())
-          && EVP_DigestFinal_ex(ctx, out.data(), &out_len);
+    int          ok      = EVP_DigestInit_ex(ctx, md(), nullptr)
+             && EVP_DigestUpdate(ctx, input.data(), input.size())
+             && EVP_DigestFinal_ex(ctx, out.data(), &out_len);
     EVP_MD_CTX_free(ctx);
 
     if (!ok || out_len != digest_size) {
@@ -42,12 +42,15 @@ ByteVector hmac_sha256(ByteSpan key, ByteSpan data)
         throw std::runtime_error("hmac key is too large");
     }
 
-    ByteVector out(TAG_SIZE);
+    ByteVector   out(TAG_SIZE);
     unsigned int out_len = 0;
-    auto* ret = HMAC(EVP_sha256(),
-                     key.data(), static_cast<int>(key.size()),
-                     data.data(), data.size(),
-                     out.data(), &out_len);
+    auto*        ret     = HMAC(EVP_sha256(),
+                     key.data(),
+                     static_cast<int>(key.size()),
+                     data.data(),
+                     data.size(),
+                     out.data(),
+                     &out_len);
     if (ret == nullptr || out_len != TAG_SIZE) {
         throw std::runtime_error("failed to compute hmac-sha256");
     }
@@ -57,9 +60,9 @@ ByteVector hmac_sha256(ByteSpan key, ByteSpan data)
 } // namespace
 
 CfbProcessor::CfbProcessor(ByteSpan key, bool reverse)
-    : enc_iv_(key.begin(), key.end())
-    , dec_iv_(key.begin(), key.end())
-    , reverse_(reverse)
+: enc_iv_(key.begin(), key.end()),
+  dec_iv_(key.begin(), key.end()),
+  reverse_(reverse)
 {
     while (enc_iv_.size() < 8) {
         enc_iv_.push_back(static_cast<Byte>(enc_iv_.size()));
@@ -89,35 +92,25 @@ void CfbProcessor::mix(Byte cipher, ByteVector& iv, size_t pos)
     iv[(pos + 1) % iv.size()] ^= cipher;
 }
 
-void CfbProcessor::encrypt(ByteSpan input,
-                           DataBufferList& output,
-                           ByteVector& iv,
-                           size_t& offset)
+void CfbProcessor::encrypt(ByteSpan input, DataBufferList& output, ByteVector& iv, size_t& offset)
 {
-    auto buf = DataBuffer{
-        .data = ByteVector(input.begin(), input.end())
-    };
+    auto buf = DataBuffer { .data = ByteVector(input.begin(), input.end()) };
     for (size_t i = 0; i < buf.data.size(); ++i) {
-        size_t pos = (offset + i) % iv.size();
-        Byte cipher = buf.data[i] ^ iv[pos];
-        buf.data[i] = cipher;
+        size_t pos    = (offset + i) % iv.size();
+        Byte   cipher = buf.data[i] ^ iv[pos];
+        buf.data[i]   = cipher;
         mix(cipher, iv, pos);
     }
     offset += buf.data.size();
     output.push_back(std::move(buf));
 }
 
-void CfbProcessor::decrypt(ByteSpan input,
-                           DataBufferList& output,
-                           ByteVector& iv,
-                           size_t& offset)
+void CfbProcessor::decrypt(ByteSpan input, DataBufferList& output, ByteVector& iv, size_t& offset)
 {
-    auto buf = DataBuffer{
-        .data = ByteVector(input.begin(), input.end())
-    };
+    auto buf = DataBuffer { .data = ByteVector(input.begin(), input.end()) };
     for (size_t i = 0; i < buf.data.size(); ++i) {
-        size_t pos = (offset + i) % iv.size();
-        Byte cipher = buf.data[i];
+        size_t pos    = (offset + i) % iv.size();
+        Byte   cipher = buf.data[i];
         buf.data[i] ^= iv[pos];
         mix(cipher, iv, pos);
     }
@@ -126,10 +119,11 @@ void CfbProcessor::decrypt(ByteSpan input,
 }
 
 CfbNonceProcessor::CfbNonceProcessor(ByteSpan iv, ByteSpan hmac_key, bool reverse)
-    : base_iv_(iv.begin(), iv.end())
-    , hmac_key_(hmac_key.begin(), hmac_key.end())
-    , reverse_(reverse)
-{}
+: base_iv_(iv.begin(), iv.end()),
+  hmac_key_(hmac_key.begin(), hmac_key.end()),
+  reverse_(reverse)
+{
+}
 
 void CfbNonceProcessor::on_local_data(ByteSpan input, DataBufferList& output)
 {
@@ -179,35 +173,31 @@ void CfbNonceProcessor::mix(Byte cipher, ByteVector& iv, size_t pos)
     iv[(pos + 1) % iv.size()] ^= cipher;
 }
 
-void CfbNonceProcessor::encrypt(ByteSpan input,
+void CfbNonceProcessor::encrypt(ByteSpan        input,
                                 DataBufferList& output,
-                                ByteVector& iv,
-                                size_t& offset)
+                                ByteVector&     iv,
+                                size_t&         offset)
 {
-    auto buf = DataBuffer{
-        .data = ByteVector(input.begin(), input.end())
-    };
+    auto buf = DataBuffer { .data = ByteVector(input.begin(), input.end()) };
     for (size_t i = 0; i < buf.data.size(); ++i) {
-        size_t pos = (offset + i) % iv.size();
-        Byte cipher = buf.data[i] ^ iv[pos];
-        buf.data[i] = cipher;
+        size_t pos    = (offset + i) % iv.size();
+        Byte   cipher = buf.data[i] ^ iv[pos];
+        buf.data[i]   = cipher;
         mix(cipher, iv, pos);
     }
     offset += buf.data.size();
     output.push_back(std::move(buf));
 }
 
-void CfbNonceProcessor::decrypt(ByteSpan input,
+void CfbNonceProcessor::decrypt(ByteSpan        input,
                                 DataBufferList& output,
-                                ByteVector& iv,
-                                size_t& offset)
+                                ByteVector&     iv,
+                                size_t&         offset)
 {
-    auto buf = DataBuffer{
-        .data = ByteVector(input.begin(), input.end())
-    };
+    auto buf = DataBuffer { .data = ByteVector(input.begin(), input.end()) };
     for (size_t i = 0; i < buf.data.size(); ++i) {
-        size_t pos = (offset + i) % iv.size();
-        Byte cipher = buf.data[i];
+        size_t pos    = (offset + i) % iv.size();
+        Byte   cipher = buf.data[i];
         buf.data[i] ^= iv[pos];
         mix(cipher, iv, pos);
     }
@@ -218,12 +208,10 @@ void CfbNonceProcessor::decrypt(ByteSpan input,
 void CfbNonceProcessor::init_local(DataBufferList& output)
 {
     ByteVector nonce = make_nonce();
-    ByteVector tag = hmac_sha256(ByteSpan(hmac_key_.data(), hmac_key_.size()),
+    ByteVector tag   = hmac_sha256(ByteSpan(hmac_key_.data(), hmac_key_.size()),
                                  ByteSpan(nonce.data(), nonce.size()));
 
-    auto handshake = DataBuffer{
-        .data = ByteVector{}
-    };
+    auto handshake = DataBuffer { .data = ByteVector {} };
     handshake.data.reserve(HANDSHAKE_PACKET_SIZE);
     handshake.data.insert(handshake.data.end(), tag.begin(), tag.end());
     handshake.data.insert(handshake.data.end(), nonce.begin(), nonce.end());
@@ -240,10 +228,13 @@ void CfbNonceProcessor::init_local(DataBufferList& output)
 
 void CfbNonceProcessor::init_remote(ByteSpan packet)
 {
-    ByteSpan expected_tag(packet.data(), TAG_SIZE);
-    ByteSpan nonce(packet.data() + TAG_SIZE, NONCE_SIZE);
+    ByteSpan   expected_tag(packet.data(), TAG_SIZE);
+    ByteSpan   nonce(packet.data() + TAG_SIZE, NONCE_SIZE);
     ByteVector actual_tag = hmac_sha256(ByteSpan(hmac_key_.data(), hmac_key_.size()), nonce);
-    if (!std::equal(expected_tag.begin(), expected_tag.end(), actual_tag.begin(), actual_tag.end())) {
+    if (!std::equal(expected_tag.begin(),
+                    expected_tag.end(),
+                    actual_tag.begin(),
+                    actual_tag.end())) {
         throw std::runtime_error("cfb_nonce handshake hmac mismatch");
     }
 

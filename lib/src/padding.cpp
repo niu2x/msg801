@@ -8,12 +8,13 @@
 namespace msg801::tunnel {
 
 PaddingProcessor::PaddingProcessor(size_t chunk_size, size_t pad_max, uint64_t seed, bool reverse)
-    : chunk_size_(chunk_size)
-    , pad_max_(pad_max)
-    , reverse_(reverse)
-    , local_rng_(seed)
-    , remote_rng_(seed ^ 0x9e3779b97f4a7c15ULL)
-{}
+: chunk_size_(chunk_size),
+  pad_max_(pad_max),
+  reverse_(reverse),
+  local_rng_(seed),
+  remote_rng_(seed ^ 0x9e3779b97f4a7c15ULL)
+{
+}
 
 void PaddingProcessor::on_local_data(ByteSpan input, DataBufferList& output)
 {
@@ -43,30 +44,27 @@ void PaddingProcessor::write_u32(ByteVector& out, uint32_t v)
 
 uint32_t PaddingProcessor::read_u32(const Byte* p)
 {
-    return (static_cast<uint32_t>(p[0]) << 24)
-         | (static_cast<uint32_t>(p[1]) << 16)
-         | (static_cast<uint32_t>(p[2]) << 8)
-         | static_cast<uint32_t>(p[3]);
+    return (static_cast<uint32_t>(p[0]) << 24) | (static_cast<uint32_t>(p[1]) << 16)
+           | (static_cast<uint32_t>(p[2]) << 8) | static_cast<uint32_t>(p[3]);
 }
 
-void PaddingProcessor::encode(ByteSpan input,
-                              std::mt19937_64& rng,
-                              DataBufferList& output)
+void PaddingProcessor::encode(ByteSpan input, std::mt19937_64& rng, DataBufferList& output)
 {
-    size_t pos = 0;
+    size_t                                  pos = 0;
     std::uniform_int_distribution<uint32_t> pad_dist(0, static_cast<uint32_t>(pad_max_));
     std::uniform_int_distribution<uint32_t> byte_dist(0, 255);
 
     while (pos < input.size()) {
-        size_t payload_len = std::min(chunk_size_, input.size() - pos);
-        uint32_t pad_len = pad_dist(rng);
+        size_t   payload_len = std::min(chunk_size_, input.size() - pos);
+        uint32_t pad_len     = pad_dist(rng);
 
         DataBuffer frame;
         frame.data.reserve(8 + payload_len + pad_len);
         write_u32(frame.data, static_cast<uint32_t>(payload_len));
         write_u32(frame.data, pad_len);
 
-        frame.data.insert(frame.data.end(), input.begin() + static_cast<std::ptrdiff_t>(pos),
+        frame.data.insert(frame.data.end(),
+                          input.begin() + static_cast<std::ptrdiff_t>(pos),
                           input.begin() + static_cast<std::ptrdiff_t>(pos + payload_len));
 
         for (uint32_t i = 0; i < pad_len; ++i) {
@@ -78,9 +76,7 @@ void PaddingProcessor::encode(ByteSpan input,
     }
 }
 
-void PaddingProcessor::decode(ByteSpan input,
-                              ByteVector& acc,
-                              DataBufferList& output)
+void PaddingProcessor::decode(ByteSpan input, ByteVector& acc, DataBufferList& output)
 {
     constexpr uint64_t HEADER_LEN = 8;
 
@@ -93,18 +89,23 @@ void PaddingProcessor::decode(ByteSpan input,
         }
 
         uint32_t payload_len = read_u32(acc.data() + static_cast<std::ptrdiff_t>(pos));
-        uint32_t pad_len = read_u32(acc.data() + static_cast<std::ptrdiff_t>(pos + 4));
+        uint32_t pad_len     = read_u32(acc.data() + static_cast<std::ptrdiff_t>(pos + 4));
         if (payload_len > chunk_size_ || pad_len > pad_max_) {
-            spdlog::warn("invalid padding frame header: payload_len={}, pad_len={}, chunk_size={}, pad_max={}",
-                         payload_len, pad_len, chunk_size_, pad_max_);
+            spdlog::warn("invalid padding frame header: payload_len={}, pad_len={}, chunk_size={}, "
+                         "pad_max={}",
+                         payload_len,
+                         pad_len,
+                         chunk_size_,
+                         pad_max_);
             throw std::runtime_error("invalid padding frame header");
         }
 
         uint64_t frame_len_u64 = HEADER_LEN + static_cast<uint64_t>(payload_len)
-                               + static_cast<uint64_t>(pad_len);
+                                 + static_cast<uint64_t>(pad_len);
         if (frame_len_u64 > static_cast<uint64_t>(std::numeric_limits<size_t>::max())) {
             spdlog::warn("invalid padding frame length overflow: payload_len={}, pad_len={}",
-                         payload_len, pad_len);
+                         payload_len,
+                         pad_len);
             throw std::runtime_error("invalid padding frame length overflow");
         }
 
