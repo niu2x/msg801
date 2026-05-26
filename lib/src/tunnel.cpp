@@ -210,34 +210,31 @@ asio::awaitable<void> read_local(SessionPtr s)
 {
     std::array<Byte, 65536> buf;
     while (!s->closed) {
-        std::size_t n;
-        try {
-            n = co_await s->local_sock.async_read_some(asio::buffer(buf), use_awaitable);
-        } catch (const boost::system::system_error& e) {
-            auto ec = e.code();
-            if (ec == asio::error::eof) {
+        boost::system::error_code read_ec;
+        std::size_t n = co_await s->local_sock.async_read_some(
+            asio::buffer(buf), redirect_error(use_awaitable, read_ec));
+        if (read_ec) {
+            if (read_ec == asio::error::eof) {
                 s->local_eof = true;
                 boost::system::error_code ignore;
                 s->remote_sock.shutdown(tcp::socket::shutdown_send, ignore);
 
-                {
-                    DataBufferList flushed;
-                    s->chain.flush_local(flushed);
-                    for (auto& out : flushed) {
-                        try {
-                            co_await asio::async_write(s->remote_sock, asio::buffer(out.data), use_awaitable);
-                            s->tx_bytes += out.data.size();
-                        } catch (...) {
-                            s->close_all();
-                            co_return;
-                        }
+                DataBufferList flushed;
+                s->chain.flush_local(flushed);
+                for (auto& out : flushed) {
+                    try {
+                        co_await asio::async_write(s->remote_sock, asio::buffer(out.data), use_awaitable);
+                        s->tx_bytes += out.data.size();
+                    } catch (...) {
+                        s->close_all();
+                        co_return;
                     }
                 }
 
                 if (s->remote_eof) {
                     s->close_all();
                 }
-            } else if (ec == asio::error::operation_aborted) {
+            } else if (read_ec == asio::error::operation_aborted) {
                 // cancelled by remote-side error, nothing to do
             } else {
                 if (!s->closed) s->close_all();
@@ -271,34 +268,31 @@ asio::awaitable<void> read_remote(SessionPtr s)
 {
     std::array<Byte, 65536> buf;
     while (!s->closed) {
-        std::size_t n;
-        try {
-            n = co_await s->remote_sock.async_read_some(asio::buffer(buf), use_awaitable);
-        } catch (const boost::system::system_error& e) {
-            auto ec = e.code();
-            if (ec == asio::error::eof) {
+        boost::system::error_code read_ec;
+        std::size_t n = co_await s->remote_sock.async_read_some(
+            asio::buffer(buf), redirect_error(use_awaitable, read_ec));
+        if (read_ec) {
+            if (read_ec == asio::error::eof) {
                 s->remote_eof = true;
                 boost::system::error_code ignore;
                 s->local_sock.shutdown(tcp::socket::shutdown_send, ignore);
 
-                {
-                    DataBufferList flushed;
-                    s->chain.flush_remote(flushed);
-                    for (auto& out : flushed) {
-                        try {
-                            co_await asio::async_write(s->local_sock, asio::buffer(out.data), use_awaitable);
-                            s->rx_bytes += out.data.size();
-                        } catch (...) {
-                            s->close_all();
-                            co_return;
-                        }
+                DataBufferList flushed;
+                s->chain.flush_remote(flushed);
+                for (auto& out : flushed) {
+                    try {
+                        co_await asio::async_write(s->local_sock, asio::buffer(out.data), use_awaitable);
+                        s->rx_bytes += out.data.size();
+                    } catch (...) {
+                        s->close_all();
+                        co_return;
                     }
                 }
 
                 if (s->local_eof) {
                     s->close_all();
                 }
-            } else if (ec == asio::error::operation_aborted) {
+            } else if (read_ec == asio::error::operation_aborted) {
                 // cancelled by local-side error, nothing to do
             } else {
                 if (!s->closed) s->close_all();

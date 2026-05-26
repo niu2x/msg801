@@ -11,7 +11,7 @@ target_link_libraries(msg801-cli PRIVATE
 
 set_target_properties(msg801-cli PROPERTIES
     OUTPUT_NAME "msg801"
-    BUILD_RPATH "${CMAKE_BINARY_DIR}/lib"
+    BUILD_WITH_INSTALL_RPATH ON
     INSTALL_RPATH "$ORIGIN/../${CMAKE_INSTALL_LIBDIR}"
 )
 
