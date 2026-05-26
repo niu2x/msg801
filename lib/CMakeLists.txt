@@ -1,7 +1,12 @@
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 
-add_library(msg801 SHARED
+set(MSG801_LIBRARY_TYPE STATIC)
+if(MSG801_BUILD_SHARED)
+    set(MSG801_LIBRARY_TYPE SHARED)
+endif()
+
+add_library(msg801 ${MSG801_LIBRARY_TYPE}
     src/lib.cpp
     src/udp_sender.cpp
     src/udp_server.cpp
@@ -32,8 +37,13 @@ set_target_properties(msg801
     PROPERTIES
         EXPORT_NAME msg801
         VERSION ${PROJECT_VERSION}
-        SOVERSION ${PROJECT_VERSION_MAJOR}
 )
+
+if(MSG801_BUILD_SHARED)
+    set_target_properties(msg801 PROPERTIES
+        SOVERSION ${PROJECT_VERSION_MAJOR}
+    )
+endif()
 
 target_link_libraries(msg801 PUBLIC Boost::boost Threads::Threads)
 target_link_libraries(msg801 PRIVATE OpenSSL::SSL OpenSSL::Crypto)
@@ -41,36 +51,38 @@ target_link_libraries(msg801 PRIVATE OpenSSL::SSL OpenSSL::Crypto)
 cxx_project_preset(msg801)
 warning_as_error_enable(msg801)
 
-configure_package_config_file(
-    ${CMAKE_SOURCE_DIR}/cmake/msg801-config.cmake.in
-    ${CMAKE_CURRENT_BINARY_DIR}/msg801-config.cmake
-    INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/msg801
-)
+if(MSG801_BUILD_SHARED)
+    configure_package_config_file(
+        ${CMAKE_SOURCE_DIR}/cmake/msg801-config.cmake.in
+        ${CMAKE_CURRENT_BINARY_DIR}/msg801-config.cmake
+        INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/msg801
+    )
 
-write_basic_config_version_file(
-    ${CMAKE_CURRENT_BINARY_DIR}/msg801-config-version.cmake
-    VERSION ${PROJECT_VERSION}
-    COMPATIBILITY SameMajorVersion
-)
+    write_basic_config_version_file(
+        ${CMAKE_CURRENT_BINARY_DIR}/msg801-config-version.cmake
+        VERSION ${PROJECT_VERSION}
+        COMPATIBILITY SameMajorVersion
+    )
 
-install(TARGETS msg801
-    EXPORT msg801Targets
-    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-)
+    install(TARGETS msg801
+        EXPORT msg801Targets
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    )
 
-install(DIRECTORY include/
-    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
-    FILES_MATCHING
-        PATTERN "*.hpp"
-)
+    install(DIRECTORY include/
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+        FILES_MATCHING
+            PATTERN "*.hpp"
+    )
 
-install(EXPORT msg801Targets
-    FILE msg801-targets.cmake
-    NAMESPACE msg801::
-    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/msg801
-)
+    install(EXPORT msg801Targets
+        FILE msg801-targets.cmake
+        NAMESPACE msg801::
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/msg801
+    )
 
-install(FILES
-    ${CMAKE_CURRENT_BINARY_DIR}/include/msg801/export.hpp
-    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/msg801
-)
+    install(FILES
+        ${CMAKE_CURRENT_BINARY_DIR}/include/msg801/export.hpp
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/msg801
+    )
+endif()

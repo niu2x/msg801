@@ -17,6 +17,7 @@ ifneq ($(Boost_ROOT),)
 endif
 	Boost_ROOT=$(Boost_ROOT) $(CMAKE) -B $(BUILD_DIR) -DCMAKE_BUILD_TYPE=Debug
 	$(CMAKE) --build $(BUILD_DIR) -j $(JOBS)
+	rm -rf dist
 	$(CMAKE) --install $(BUILD_DIR) --prefix dist
 
 run: build

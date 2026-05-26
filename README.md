@@ -38,6 +38,15 @@ make build
 
 - `dist/bin/msg801`
 
+默认构建为“单文件发布”模式：`msg801` 会静态链接项目内 `msg801` 库，不再额外安装 `libmsg801.so`。
+如需恢复动态库构建，可在配置时显式开启：
+
+```bash
+cmake -B build -DMSG801_BUILD_SHARED=ON
+cmake --build build -j
+cmake --install build --prefix dist
+```
+
 若 Boost 不在系统默认路径，可在 `.env` 中设置：
 
 ```bash

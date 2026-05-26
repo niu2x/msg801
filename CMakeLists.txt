@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.16)
 project(msg801 VERSION 0.1.0 LANGUAGES CXX)
 
+option(MSG801_BUILD_SHARED "Build libmsg801 as a shared library" OFF)
+
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
 include(cxx_project)
