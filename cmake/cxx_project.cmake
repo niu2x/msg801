@@ -9,6 +9,10 @@ function(cxx_project_preset)
             CXX_STANDARD_REQUIRED ON
             CXX_EXTENSIONS OFF
         )
+
+        if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+            target_compile_options(${target} PRIVATE -fcoroutines)
+        endif()
     endforeach()
 endfunction()
 
