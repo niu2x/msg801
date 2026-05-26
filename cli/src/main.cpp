@@ -74,21 +74,6 @@ int main(int argc, char* argv[])
     bool show_about = false;
     app.add_flag("--about", show_about, "Show about");
 
-    // --- send subcommand ---
-    auto* send_cmd = app.add_subcommand("send", "Send a UDP message to ip:port")->group("Commands");
-    std::string send_ip;
-    uint16_t    send_port {};
-    std::string send_msg;
-    send_cmd->add_option("ip", send_ip, "Target IP address")->required();
-    send_cmd->add_option("port", send_port, "Target port")->required();
-    send_cmd->add_option("message", send_msg, "Message to send")->required();
-
-    // --- serve subcommand ---
-    auto* serve_cmd
-        = app.add_subcommand("serve", "Listen for UDP messages on a port")->group("Commands");
-    uint16_t serve_port {};
-    serve_cmd->add_option("port", serve_port, "Listening port")->required();
-
     // --- tunnel subcommand ---
     auto* tunnel_cmd = app.add_subcommand("tunnel", "TCP tunnel: listen -> forward to remote")
                            ->group("Commands");
@@ -103,14 +88,36 @@ int main(int argc, char* argv[])
                            tunnel_processors,
                            "Processor in pipeline order, format: name[:k=v,...] (repeatable)");
 
+    // --- udp subcommand ---
+    auto* udp_cmd = app.add_subcommand("udp", "UDP commands")->group("Commands");
+
+    // --- udp send ---
+    auto*       send_cmd = udp_cmd->add_subcommand("send", "Send a UDP message");
+    std::string send_ip;
+    uint16_t    send_port {};
+    std::string send_message;
+    send_cmd->add_option("ip", send_ip, "Target IP address")->required();
+    send_cmd->add_option("port", send_port, "Target port")->required()->type_name("PORT");
+    send_cmd->add_option("message", send_message, "Message to send")->required();
+
+    // --- udp serve ---
+    auto*    serve_cmd = udp_cmd->add_subcommand("serve", "Listen for UDP messages on a port");
+    uint16_t serve_port {};
+    serve_cmd->add_option("port", serve_port, "Listening port")->required()->type_name("PORT");
+
     CLI11_PARSE(app, argc, argv);
 
     if (show_about) {
         return cmd_about();
     }
 
+    if (tunnel_cmd->parsed()) {
+        msg801::run_tunnel(tunnel_listen, tunnel_remote, tunnel_processors);
+        return EXIT_SUCCESS;
+    }
+
     if (send_cmd->parsed()) {
-        auto result = msg801::send_udp(send_ip, send_port, send_msg);
+        auto result = msg801::send_udp(send_ip, send_port, send_message);
         if (!result.success) {
             std::cerr << "Error: " << result.error << '\n';
             return EXIT_FAILURE;
@@ -121,11 +128,6 @@ int main(int argc, char* argv[])
 
     if (serve_cmd->parsed()) {
         msg801::serve_udp(serve_port);
-        return EXIT_SUCCESS;
-    }
-
-    if (tunnel_cmd->parsed()) {
-        msg801::run_tunnel(tunnel_listen, tunnel_remote, tunnel_processors);
         return EXIT_SUCCESS;
     }
 
