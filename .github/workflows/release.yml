@@ -50,8 +50,9 @@ jobs:
         run: |
           curl -L -o /tmp/boost_1_83_0.tar.gz https://archives.boost.io/release/1.83.0/source/boost_1_83_0.tar.gz
           tar -xf /tmp/boost_1_83_0.tar.gz -C /tmp
-          /tmp/boost_1_83_0/bootstrap.sh --prefix="$HOME/boost-1.83" --with-libraries=program_options
-          /tmp/boost_1_83_0/b2 install -j 4
+          cd /tmp/boost_1_83_0
+          ./bootstrap.sh --prefix="$HOME/boost-1.83" --with-libraries=program_options
+          ./b2 install -j 4
 
       - name: Install dependencies (macOS)
         if: startsWith(matrix.runs_on, 'macos-')
