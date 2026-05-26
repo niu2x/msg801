@@ -139,6 +139,16 @@ static int cmd_tunnel(int argc, char* argv[])
     return EXIT_SUCCESS;
 }
 
+static void show_help(const po::options_description& desc)
+{
+    std::cout << "Usage: msg801 [--help] [--about] <command>\n\n"
+              << desc << "\n\n"
+              << "Commands:\n"
+              << "  send    Send a UDP message to ip:port\n"
+              << "  serve   Listen for UDP messages on a port\n"
+              << "  tunnel  TCP tunnel: listen -> forward to remote\n";
+}
+
 static int cmd_global(int argc, char* argv[])
 {
     po::options_description desc("Options");
@@ -152,12 +162,7 @@ static int cmd_global(int argc, char* argv[])
     po::notify(vm);
 
     if (vm.count("help")) {
-        std::cout << "Usage: msg801 [--help] [--about] <command>\n\n"
-                  << desc << "\n\n"
-                  << "Commands:\n"
-                  << "  send    Send a UDP message to ip:port\n"
-                  << "  serve   Listen for UDP messages on a port\n"
-                  << "  tunnel  TCP tunnel: listen -> forward to remote\n";
+        show_help(desc);
         return EXIT_SUCCESS;
     }
 
@@ -165,7 +170,8 @@ static int cmd_global(int argc, char* argv[])
         return cmd_about();
     }
 
-    std::cout << msg801::greeting() << '\n';
+    show_help(desc);
+
     return EXIT_SUCCESS;
 }
 

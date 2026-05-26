@@ -39,3 +39,4 @@ Boost_ROOT=/path/to/boost-1.83.0
 - **头文件**: 声明仅含接口签名和短小内联函数（getter/setter/简单工厂），多行函数体放 `lib/src/*.cpp`
 - **#include 顺序**: 标准 C → 标准 C++ → 第三方 → 项目，组间空行
 - **Public 头文件引用**: `lib/include/msg801/` 下的头文件中，项目内 `#include` 用 `<>` 而非 `""`
+- **代码格式化**: 编辑后运行 `clang-format -i <file>` 保持风格一致（配置见 `.clang-format`）
