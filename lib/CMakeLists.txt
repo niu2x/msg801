@@ -15,6 +15,7 @@ add_library(msg801 ${MSG801_LIBRARY_TYPE}
     src/padding.cpp
     src/processor_chain.cpp
     src/identity.cpp
+    src/relay.cpp
 )
 
 target_include_directories(msg801

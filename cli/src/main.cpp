@@ -9,6 +9,7 @@
 #include "msg801/udp_sender.hpp"
 #include "msg801/udp_server.hpp"
 #include "msg801/tunnel.hpp"
+#include "msg801/relay.hpp"
 
 static int cmd_about()
 {
@@ -94,6 +95,25 @@ int main(int argc, char* argv[])
                      "Reverse all processors and reverse processor order")
         ->default_val(false);
 
+    // --- relay subcommand ---
+    auto* relay_cmd
+        = app.add_subcommand("relay", "Relay: NAT traversal via ID matching")->group("Commands");
+
+    std::string relay_server;
+    uint16_t    relay_server_port {};
+    std::string relay_id;
+    std::string relay_role;
+    std::string relay_extra;
+    bool        relay_is_server = false;
+
+    relay_cmd->add_flag("--server", relay_is_server, "Run as relay server (A)");
+    relay_cmd->add_option("--port", relay_server_port, "Server port")->type_name("PORT");
+    relay_cmd->add_option("--connect", relay_server, "Server address to connect to")
+        ->type_name("IP");
+    relay_cmd->add_option("--id", relay_id, "Tunnel ID");
+    relay_cmd->add_option("--role", relay_role, "Node role: B or C");
+    relay_cmd->add_option("--extra", relay_extra, "Listen addr (B) or target addr (C)");
+
     // --- udp subcommand ---
     auto* udp_cmd = app.add_subcommand("udp", "UDP commands")->group("Commands");
 
@@ -115,6 +135,28 @@ int main(int argc, char* argv[])
 
     if (show_about) {
         return cmd_about();
+    }
+
+    if (relay_cmd->parsed()) {
+        if (relay_is_server) {
+            msg801::relay::run_server(relay_server_port);
+        } else {
+            if (relay_role.empty() || relay_role.size() != 1
+                || (relay_role[0] != 'B' && relay_role[0] != 'C')) {
+                std::cerr << "Error: --role must be B or C\n";
+                return EXIT_FAILURE;
+            }
+            if (relay_server.empty()) {
+                std::cerr << "Error: --connect is required for node mode\n";
+                return EXIT_FAILURE;
+            }
+            msg801::relay::run_node(relay_server,
+                                    relay_server_port,
+                                    relay_id,
+                                    relay_role[0],
+                                    relay_extra);
+        }
+        return EXIT_SUCCESS;
     }
 
     if (tunnel_cmd->parsed()) {
