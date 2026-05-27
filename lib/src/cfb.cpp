@@ -127,42 +127,54 @@ CfbNonceProcessor::CfbNonceProcessor(ByteSpan iv, ByteSpan hmac_key, bool revers
 
 void CfbNonceProcessor::on_local_data(ByteSpan input, DataBufferList& output)
 {
-    if (!local_ready_) {
-        init_local(output);
-    }
-
     if (reverse_) {
+        if (!dec_ready_) {
+            dec_handshake_buffer_.insert(dec_handshake_buffer_.end(), input.begin(), input.end());
+            if (dec_handshake_buffer_.size() < HANDSHAKE_PACKET_SIZE) {
+                return;
+            }
+
+            ByteSpan packet(dec_handshake_buffer_.data(), HANDSHAKE_PACKET_SIZE);
+            init_decrypt(packet);
+
+            ByteSpan remain(dec_handshake_buffer_.data() + HANDSHAKE_PACKET_SIZE,
+                            dec_handshake_buffer_.size() - HANDSHAKE_PACKET_SIZE);
+            decrypt(remain, output, dec_iv_, dec_offset_);
+            dec_handshake_buffer_.clear();
+            return;
+        }
         decrypt(input, output, dec_iv_, dec_offset_);
     } else {
+        if (!enc_ready_) {
+            init_encrypt(output);
+        }
         encrypt(input, output, enc_iv_, enc_offset_);
     }
 }
 
 void CfbNonceProcessor::on_remote_data(ByteSpan input, DataBufferList& output)
 {
-    if (!remote_ready_) {
-        remote_handshake_buffer_.insert(remote_handshake_buffer_.end(), input.begin(), input.end());
-        if (remote_handshake_buffer_.size() < HANDSHAKE_PACKET_SIZE) {
-            return;
-        }
-
-        ByteSpan packet(remote_handshake_buffer_.data(), HANDSHAKE_PACKET_SIZE);
-        init_remote(packet);
-
-        ByteSpan remain(remote_handshake_buffer_.data() + HANDSHAKE_PACKET_SIZE,
-                        remote_handshake_buffer_.size() - HANDSHAKE_PACKET_SIZE);
-        if (reverse_) {
-            encrypt(remain, output, enc_iv_, enc_offset_);
-        } else {
-            decrypt(remain, output, dec_iv_, dec_offset_);
-        }
-        remote_handshake_buffer_.clear();
-        return;
-    }
-
     if (reverse_) {
+        if (!enc_ready_) {
+            init_encrypt(output);
+        }
         encrypt(input, output, enc_iv_, enc_offset_);
     } else {
+        if (!dec_ready_) {
+            dec_handshake_buffer_.insert(dec_handshake_buffer_.end(), input.begin(), input.end());
+            if (dec_handshake_buffer_.size() < HANDSHAKE_PACKET_SIZE) {
+                return;
+            }
+
+            ByteSpan packet(dec_handshake_buffer_.data(), HANDSHAKE_PACKET_SIZE);
+            init_decrypt(packet);
+
+            ByteSpan remain(dec_handshake_buffer_.data() + HANDSHAKE_PACKET_SIZE,
+                            dec_handshake_buffer_.size() - HANDSHAKE_PACKET_SIZE);
+            decrypt(remain, output, dec_iv_, dec_offset_);
+            dec_handshake_buffer_.clear();
+            return;
+        }
         decrypt(input, output, dec_iv_, dec_offset_);
     }
 }
@@ -205,7 +217,7 @@ void CfbNonceProcessor::decrypt(ByteSpan        input,
     output.push_back(std::move(buf));
 }
 
-void CfbNonceProcessor::init_local(DataBufferList& output)
+void CfbNonceProcessor::init_encrypt(DataBufferList& output)
 {
     ByteVector nonce = make_nonce();
     ByteVector tag   = hmac_sha256(ByteSpan(hmac_key_.data(), hmac_key_.size()),
@@ -218,15 +230,11 @@ void CfbNonceProcessor::init_local(DataBufferList& output)
     output.push_back(std::move(handshake));
 
     ByteVector iv = derive_iv(ByteSpan(nonce.data(), nonce.size()));
-    if (reverse_) {
-        dec_iv_ = std::move(iv);
-    } else {
-        enc_iv_ = std::move(iv);
-    }
-    local_ready_ = true;
+    enc_iv_       = std::move(iv);
+    enc_ready_    = true;
 }
 
-void CfbNonceProcessor::init_remote(ByteSpan packet)
+void CfbNonceProcessor::init_decrypt(ByteSpan packet)
 {
     ByteSpan   expected_tag(packet.data(), TAG_SIZE);
     ByteSpan   nonce(packet.data() + TAG_SIZE, NONCE_SIZE);
@@ -239,12 +247,8 @@ void CfbNonceProcessor::init_remote(ByteSpan packet)
     }
 
     ByteVector iv = derive_iv(nonce);
-    if (reverse_) {
-        enc_iv_ = std::move(iv);
-    } else {
-        dec_iv_ = std::move(iv);
-    }
-    remote_ready_ = true;
+    dec_iv_       = std::move(iv);
+    dec_ready_    = true;
 }
 
 ByteVector CfbNonceProcessor::derive_iv(ByteSpan nonce) const

@@ -18,17 +18,15 @@ public:
 private:
     ByteVector enc_iv_;
     ByteVector dec_iv_;
-    bool reverse_;
-    size_t enc_offset_ = 0;
-    size_t dec_offset_ = 0;
+    bool       reverse_;
+    size_t     enc_offset_ = 0;
+    size_t     dec_offset_ = 0;
 
     static void mix(Byte cipher, ByteVector& iv, size_t pos);
 
-    void encrypt(ByteSpan input, DataBufferList& output, ByteVector& iv,
-                 size_t& offset);
+    void encrypt(ByteSpan input, DataBufferList& output, ByteVector& iv, size_t& offset);
 
-    void decrypt(ByteSpan input, DataBufferList& output, ByteVector& iv,
-                 size_t& offset);
+    void decrypt(ByteSpan input, DataBufferList& output, ByteVector& iv, size_t& offset);
 };
 
 class CfbNonceProcessor : public Processor {
@@ -44,24 +42,22 @@ private:
     ByteVector hmac_key_;
     ByteVector enc_iv_;
     ByteVector dec_iv_;
-    bool reverse_;
-    size_t enc_offset_ = 0;
-    size_t dec_offset_ = 0;
-    bool local_ready_ = false;
-    bool remote_ready_ = false;
-    ByteVector remote_handshake_buffer_;
+    bool       reverse_;
+    size_t     enc_offset_ = 0;
+    size_t     dec_offset_ = 0;
+    bool       enc_ready_  = false;
+    bool       dec_ready_  = false;
+    ByteVector dec_handshake_buffer_;
 
     static void mix(Byte cipher, ByteVector& iv, size_t pos);
 
-    void encrypt(ByteSpan input, DataBufferList& output, ByteVector& iv,
-                 size_t& offset);
+    void encrypt(ByteSpan input, DataBufferList& output, ByteVector& iv, size_t& offset);
 
-    void decrypt(ByteSpan input, DataBufferList& output, ByteVector& iv,
-                 size_t& offset);
+    void decrypt(ByteSpan input, DataBufferList& output, ByteVector& iv, size_t& offset);
 
-    void init_local(DataBufferList& output);
+    void init_encrypt(DataBufferList& output);
 
-    void init_remote(ByteSpan packet);
+    void init_decrypt(ByteSpan packet);
 
     ByteVector derive_iv(ByteSpan nonce) const;
 

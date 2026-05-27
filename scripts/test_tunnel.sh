@@ -28,23 +28,38 @@ check() {
 
 start_echo() {
     local port="$1"
-    python3 -c "
-import socket, threading, sys
+    local capture_file="${2:-}"
+    python3 - "$port" "$capture_file" <<'PY' &
+import socket
+import sys
+import threading
+
+port = int(sys.argv[1])
+capture_path = sys.argv[2]
+capture_fp = open(capture_path, 'ab', buffering=0) if capture_path else None
+capture_lock = threading.Lock()
+
 def echo(s):
     while True:
         d = s.recv(65536)
-        if not d: break
+        if not d:
+            break
+        if capture_fp is not None:
+            with capture_lock:
+                capture_fp.write(d)
         s.sendall(d)
     s.close()
+
 s = socket.socket()
 s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-s.bind(('127.0.0.1', $port))
+s.bind(('127.0.0.1', port))
 s.listen(50)
-sys.stderr.write('echo ready on $port\n'); sys.stderr.flush()
+sys.stderr.write(f'echo ready on {port}\n')
+sys.stderr.flush()
 while True:
     c, _ = s.accept()
     threading.Thread(target=echo, args=(c,), daemon=True).start()
-" &
+PY
 }
 
 send_recv_to() {
@@ -87,6 +102,17 @@ send_recv_cmp() {
     local port="$1" expected="$2" outfile="$3"
     send_recv_to "$port" "$(cat "$expected")" > "$outfile"
     file_eq "$expected" "$outfile"
+}
+
+capture_eq_payload() {
+    local payload="$1" capture_file="$2"
+    local expected_file
+    expected_file=$(mktemp)
+    printf '%s' "$payload" > "$expected_file"
+    file_eq "$expected_file" "$capture_file"
+    local rc=$?
+    rm -f "$expected_file"
+    return "$rc"
 }
 
 concurrent_test() {
@@ -255,25 +281,33 @@ run_cfb_nonce_tests() {
     echo "--- cfb_nonce two-hop tests (A encrypt -> B decrypt) ---"
 
     local ok1=true
+    : > "$CFB_NONCE_ECHO_CAPTURE"
     result=$(send_recv_to "$CFB_NONCE_LISTEN_PORT" "hello cfb_nonce")
     [[ "$result" = "hello cfb_nonce" ]] || ok1=false
+    capture_eq_payload "hello cfb_nonce" "$CFB_NONCE_ECHO_CAPTURE" || ok1=false
     check "cfb_nonce short message" "[[ '$ok1' = 'true' ]]"
 
     local ok2=true
+    : > "$CFB_NONCE_ECHO_CAPTURE"
     result=$(send_recv_to "$CFB_NONCE_LISTEN_PORT" "")
     [[ "$result" = "" ]] || ok2=false
+    capture_eq_payload "" "$CFB_NONCE_ECHO_CAPTURE" || ok2=false
     check "cfb_nonce empty message" "[[ '$ok2' = 'true' ]]"
 
     local ok3=true
     data=$(head -c 10240 /dev/urandom | base64 -w0)
+    : > "$CFB_NONCE_ECHO_CAPTURE"
     result=$(send_recv_to "$CFB_NONCE_LISTEN_PORT" "$data")
     [[ "$result" = "$data" ]] || ok3=false
+    capture_eq_payload "$data" "$CFB_NONCE_ECHO_CAPTURE" || ok3=false
     check "cfb_nonce 10KB payload" "[[ '$ok3' = 'true' ]]"
 
     local ok4=true
     data=$(head -c 65536 /dev/urandom | base64 -w0)
+    : > "$CFB_NONCE_ECHO_CAPTURE"
     result=$(send_recv_to "$CFB_NONCE_LISTEN_PORT" "$data")
     [[ "$result" = "$data" ]] || ok4=false
+    capture_eq_payload "$data" "$CFB_NONCE_ECHO_CAPTURE" || ok4=false
     check "cfb_nonce 64KB payload" "[[ '$ok4' = 'true' ]]"
 
     local ok5=true
@@ -282,8 +316,10 @@ run_cfb_nonce_tests() {
     check "cfb_nonce 16 concurrent 1KB" "[[ '$ok5' = 'true' ]]"
 
     local ok6=true
+    : > "$CFB_NONCE_ECHO_CAPTURE"
     result=$(send_recv_to "$CFB_NONCE_LISTEN_PORT" "ping")
     [[ "$result" = "ping" ]] || ok6=false
+    capture_eq_payload "ping" "$CFB_NONCE_ECHO_CAPTURE" || ok6=false
     check "cfb_nonce tunnel still alive" "[[ '$ok6' = 'true' ]]"
 }
 
@@ -380,9 +416,10 @@ CFB_NONCE_DECODE_PORT=19987
 CFB_NONCE_LISTEN_PORT=${11:-19986}
 CFB_NONCE_IV="${12:-nonce-seed-iv}"
 CFB_NONCE_HMAC_KEY="${13:-nonce-shared-secret}"
+CFB_NONCE_ECHO_CAPTURE="/tmp/msg801_cfb_nonce_echo_${$}.bin"
 
 if "$TUNNEL_BIN" tunnel --help 2>/dev/null | grep -q processor; then
-    start_echo "$CFB_NONCE_ECHO_PORT"
+    start_echo "$CFB_NONCE_ECHO_PORT" "$CFB_NONCE_ECHO_CAPTURE"
     sleep 0.5
 
     # Tunnel B: exit node (decrypt local, encrypt remote)
