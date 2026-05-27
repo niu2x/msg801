@@ -551,33 +551,6 @@ if "$TUNNEL_BIN" tunnel --help 2>/dev/null | grep -q processor; then
     sleep 0.5
 
     run_padding_cfb_nonce_tests
-
-    echo ""
-    echo "--- padding+cfb_nonce ordering validation (pad before cfb/cfb_nonce must fail) ---"
-
-    err=$(2>&1 "$TUNNEL_BIN" tunnel \
-        --listen "127.0.0.1:19980" \
-        --remote "127.0.0.1:19981" \
-        --processor "padding:chunk=1024,max=64" \
-        --processor "cfb:key=test" \
-        || true)
-    if echo "$err" | grep -q "must be placed before padding"; then
-        check "pad before cfb rejected" "true"
-    else
-        check "pad before cfb rejected" "false"
-    fi
-
-    err=$(2>&1 "$TUNNEL_BIN" tunnel \
-        --listen "127.0.0.1:19980" \
-        --remote "127.0.0.1:19981" \
-        --processor "padding:chunk=1024,max=64" \
-        --processor "cfb_nonce:iv=test,hmac_key=test" \
-        || true)
-    if echo "$err" | grep -q "must be placed before padding"; then
-        check "pad before cfb_nonce rejected" "true"
-    else
-        check "pad before cfb_nonce rejected" "false"
-    fi
 fi
 
 echo ""

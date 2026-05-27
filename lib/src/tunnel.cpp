@@ -73,20 +73,11 @@ std::optional<tunnel::ProcessorChain> build_processor_chain(const std::vector<st
         return chain;
     }
 
-    bool seen_padding = false;
-
     for (const auto& spec : specs) {
         auto        colon = spec.find(':');
         std::string name  = colon == std::string::npos ? spec : spec.substr(0, colon);
         std::string args  = colon == std::string::npos ? std::string {} : spec.substr(colon + 1);
         auto        kv    = parse_kv(args);
-
-        if (name == "cfb" || name == "cfb_nonce") {
-            if (seen_padding) {
-                spdlog::error("processor {} must be placed before padding", name);
-                return std::nullopt;
-            }
-        }
 
         if (name == "identity") {
             chain.add(std::make_unique<tunnel::IdentityProcessor>());
@@ -138,7 +129,6 @@ std::optional<tunnel::ProcessorChain> build_processor_chain(const std::vector<st
             }
             bool reverse = kv.count("reverse") ? parse_bool(kv["reverse"]) : false;
             chain.add(std::make_unique<tunnel::PaddingProcessor>(chunk, max, seed, reverse));
-            seen_padding = true;
         } else {
             spdlog::error("unknown processor: {}", name);
             return std::nullopt;
