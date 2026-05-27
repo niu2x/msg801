@@ -65,7 +65,24 @@ bool parse_bool(const std::string& v)
     return v == "1" || v == "true" || v == "yes";
 }
 
-std::optional<tunnel::ProcessorChain> build_processor_chain(const std::vector<std::string>& specs)
+bool resolve_processor_reverse(const std::unordered_map<std::string, std::string>& kv,
+                               bool                                                global_reverse)
+{
+    if (!kv.count("reverse")) {
+        return global_reverse;
+    }
+
+    bool legacy_reverse = parse_bool(kv.at("reverse"));
+    spdlog::warn("processor arg reverse is deprecated, use --reverse=1 instead");
+    if (global_reverse) {
+        spdlog::warn("both --reverse and processor reverse are set; processor reverse is ignored");
+        return global_reverse;
+    }
+    return legacy_reverse;
+}
+
+std::optional<tunnel::ProcessorChain> build_processor_chain(const std::vector<std::string>& specs,
+                                                            bool                            reverse)
 {
     tunnel::ProcessorChain chain;
     if (specs.empty()) {
@@ -73,7 +90,12 @@ std::optional<tunnel::ProcessorChain> build_processor_chain(const std::vector<st
         return chain;
     }
 
-    for (const auto& spec : specs) {
+    std::vector<std::string> ordered_specs(specs.begin(), specs.end());
+    if (reverse) {
+        std::reverse(ordered_specs.begin(), ordered_specs.end());
+    }
+
+    for (const auto& spec : ordered_specs) {
         auto        colon = spec.find(':');
         std::string name  = colon == std::string::npos ? spec : spec.substr(0, colon);
         std::string args  = colon == std::string::npos ? std::string {} : spec.substr(colon + 1);
@@ -87,9 +109,10 @@ std::optional<tunnel::ProcessorChain> build_processor_chain(const std::vector<st
                 spdlog::error("processor cfb requires key=<...>");
                 return std::nullopt;
             }
-            bool       reverse = kv.count("reverse") ? parse_bool(kv["reverse"]) : false;
+            bool       processor_reverse = resolve_processor_reverse(kv, reverse);
             ByteVector key_bytes(it->second.begin(), it->second.end());
-            chain.add(std::make_unique<tunnel::CfbProcessor>(ByteSpan(key_bytes), reverse));
+            chain.add(
+                std::make_unique<tunnel::CfbProcessor>(ByteSpan(key_bytes), processor_reverse));
         } else if (name == "cfb_nonce") {
             auto iv_it       = kv.find("iv");
             auto hmac_key_it = kv.find("hmac_key");
@@ -98,12 +121,12 @@ std::optional<tunnel::ProcessorChain> build_processor_chain(const std::vector<st
                 spdlog::error("processor cfb_nonce requires iv=<...>,hmac_key=<...>");
                 return std::nullopt;
             }
-            bool       reverse = kv.count("reverse") ? parse_bool(kv["reverse"]) : false;
+            bool       processor_reverse = resolve_processor_reverse(kv, reverse);
             ByteVector iv_bytes(iv_it->second.begin(), iv_it->second.end());
             ByteVector hmac_key_bytes(hmac_key_it->second.begin(), hmac_key_it->second.end());
             chain.add(std::make_unique<tunnel::CfbNonceProcessor>(ByteSpan(iv_bytes),
                                                                   ByteSpan(hmac_key_bytes),
-                                                                  reverse));
+                                                                  processor_reverse));
         } else if (name == "padding") {
             if (!kv.count("chunk") || !kv.count("max")) {
                 spdlog::error("processor padding requires chunk=<N>,max=<M>");
@@ -127,8 +150,9 @@ std::optional<tunnel::ProcessorChain> build_processor_chain(const std::vector<st
                              ^ static_cast<uint64_t>(std::random_device {}());
                 seed = t ^ r;
             }
-            bool reverse = kv.count("reverse") ? parse_bool(kv["reverse"]) : false;
-            chain.add(std::make_unique<tunnel::PaddingProcessor>(chunk, max, seed, reverse));
+            bool processor_reverse = resolve_processor_reverse(kv, reverse);
+            chain.add(
+                std::make_unique<tunnel::PaddingProcessor>(chunk, max, seed, processor_reverse));
         } else {
             spdlog::error("unknown processor: {}", name);
             return std::nullopt;
@@ -391,7 +415,8 @@ void start_session(SessionPtr s)
 asio::awaitable<void> do_accept(asio::io_context&        ctx,
                                 tcp::acceptor            acceptor,
                                 tcp::endpoint            remote_ep,
-                                std::vector<std::string> processor_specs)
+                                std::vector<std::string> processor_specs,
+                                bool                     reverse)
 {
     uint64_t next_id = 0;
     while (true) {
@@ -405,7 +430,7 @@ asio::awaitable<void> do_accept(asio::io_context&        ctx,
         auto id = next_id++;
         log_conn_new(id, local.remote_endpoint(), remote_ep);
 
-        auto chain_opt = build_processor_chain(processor_specs);
+        auto chain_opt = build_processor_chain(processor_specs, reverse);
         if (!chain_opt.has_value()) {
             co_return;
         }
@@ -432,7 +457,8 @@ asio::awaitable<void> do_accept(asio::io_context&        ctx,
 
 void run_tunnel(std::string_view                listen_addr,
                 std::string_view                remote_addr,
-                const std::vector<std::string>& processor_specs)
+                const std::vector<std::string>& processor_specs,
+                bool                            reverse)
 {
     auto colon1 = listen_addr.rfind(':');
     auto colon2 = remote_addr.rfind(':');
@@ -456,6 +482,12 @@ void run_tunnel(std::string_view                listen_addr,
         return;
     }
 
+    auto check_chain = build_processor_chain(processor_specs, reverse);
+    if (!check_chain.has_value()) {
+        spdlog::error("invalid processor configuration");
+        return;
+    }
+
     asio::io_context ctx;
 
     tcp::endpoint local_ep { asio::ip::make_address(listen_ip), listen_port };
@@ -468,7 +500,9 @@ void run_tunnel(std::string_view                listen_addr,
                  remote_ip,
                  remote_port);
 
-    co_spawn(ctx, do_accept(ctx, std::move(acceptor), remote_ep, processor_specs), detached);
+    co_spawn(ctx,
+             do_accept(ctx, std::move(acceptor), remote_ep, processor_specs, reverse),
+             detached);
 
     ctx.run();
 }

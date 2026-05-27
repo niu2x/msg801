@@ -11,18 +11,17 @@ class CfbProcessor : public Processor {
 public:
     explicit CfbProcessor(ByteSpan key, bool reverse = false);
 
-    void on_local_data(ByteSpan input, DataBufferList& output) override;
-
-    void on_remote_data(ByteSpan input, DataBufferList& output) override;
-
 private:
-    ByteVector enc_iv_;
-    ByteVector dec_iv_;
-    bool       reverse_;
-    size_t     enc_offset_ = 0;
-    size_t     dec_offset_ = 0;
+    ByteVector pack_iv_;
+    ByteVector unpack_iv_;
+    size_t     pack_offset_   = 0;
+    size_t     unpack_offset_ = 0;
 
     static void mix(Byte cipher, ByteVector& iv, size_t pos);
+
+    void pack(ByteSpan input, DataBufferList& output) override;
+
+    void unpack(ByteSpan input, DataBufferList& output) override;
 
     void encrypt(ByteSpan input, DataBufferList& output, ByteVector& iv, size_t& offset);
 
@@ -33,31 +32,30 @@ class CfbNonceProcessor : public Processor {
 public:
     explicit CfbNonceProcessor(ByteSpan iv, ByteSpan hmac_key, bool reverse = false);
 
-    void on_local_data(ByteSpan input, DataBufferList& output) override;
-
-    void on_remote_data(ByteSpan input, DataBufferList& output) override;
-
 private:
     ByteVector base_iv_;
     ByteVector hmac_key_;
-    ByteVector enc_iv_;
-    ByteVector dec_iv_;
-    bool       reverse_;
-    size_t     enc_offset_ = 0;
-    size_t     dec_offset_ = 0;
-    bool       enc_ready_  = false;
-    bool       dec_ready_  = false;
-    ByteVector dec_handshake_buffer_;
+    ByteVector pack_iv_;
+    ByteVector unpack_iv_;
+    size_t     pack_offset_   = 0;
+    size_t     unpack_offset_ = 0;
+    bool       pack_ready_    = false;
+    bool       unpack_ready_  = false;
+    ByteVector unpack_handshake_buffer_;
 
     static void mix(Byte cipher, ByteVector& iv, size_t pos);
+
+    void pack(ByteSpan input, DataBufferList& output) override;
+
+    void unpack(ByteSpan input, DataBufferList& output) override;
 
     void encrypt(ByteSpan input, DataBufferList& output, ByteVector& iv, size_t& offset);
 
     void decrypt(ByteSpan input, DataBufferList& output, ByteVector& iv, size_t& offset);
 
-    void init_encrypt(DataBufferList& output);
+    void init_pack(DataBufferList& output);
 
-    void init_decrypt(ByteSpan packet);
+    void init_unpack(ByteSpan packet);
 
     ByteVector derive_iv(ByteSpan nonce) const;
 

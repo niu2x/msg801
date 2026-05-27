@@ -52,6 +52,7 @@ msg801 tunnel --listen <ip:port> --remote <ip:port> [--processor <spec>]...
 - `--listen`：本地监听地址
 - `--remote`：远端转发地址
 - `--processor`：处理器定义（可重复，按出现顺序构建 pipeline）
+- `--reverse`：是否将当前节点设为反向角色（可选，`0|1`，默认 `0`）
 
 `--processor` 格式：
 
@@ -62,9 +63,9 @@ name[:k=v,k=v,...]
 当前内置处理器：
 
 - `identity`
-- `cfb:key=<str>[,reverse=0|1]`
-- `cfb_nonce:iv=<str>,hmac_key=<str>[,reverse=0|1]`
-- `padding:chunk=<N>,max=<M>[,seed=<u64>][,reverse=0|1]`
+- `cfb:key=<str>`
+- `cfb_nonce:iv=<str>,hmac_key=<str>`
+- `padding:chunk=<N>,max=<M>[,seed=<u64>]`
 
 ### 各处理器参数说明
 
@@ -75,17 +76,17 @@ name[:k=v,k=v,...]
 
 #### `cfb`
 
-格式：`cfb:key=<str>[,reverse=0|1]`
+格式：`cfb:key=<str>`
 
 - `key`：CFB 处理器密钥（必填）
   - 两端必须一致，否则无法正确还原
-- `reverse`：是否反转该节点的加/解密角色（可选，默认 `0`）
+- 角色方向由全局 `--reverse` 控制：
   - `0`：入口常规角色（local->remote 加密，remote->local 解密）
   - `1`：出口反向角色（local->remote 解密，remote->local 加密）
 
 #### `padding`
 
-格式：`padding:chunk=<N>,max=<M>[,seed=<u64>][,reverse=0|1]`
+格式：`padding:chunk=<N>,max=<M>[,seed=<u64>]`
 
 - `chunk`：每帧最大业务数据字节数（必填）
   - 业务流会按该值分段后再加随机填充
@@ -94,19 +95,19 @@ name[:k=v,k=v,...]
 - `seed`：随机种子（可选）
   - 不配置时，程序会自动使用“时间 + 随机设备”生成种子（推荐）
   - 仅在你需要可复现实验时才建议手动固定 `seed`
-- `reverse`：是否反转该节点的编/解帧角色（可选，默认 `0`）
+- 角色方向由全局 `--reverse` 控制：
   - `0`：入口常规角色（local 编帧加填充，remote 解帧去填充）
   - `1`：出口反向角色（local 解帧去填充，remote 编帧加填充）
 
 #### `cfb_nonce`
 
-格式：`cfb_nonce:iv=<str>,hmac_key=<str>[,reverse=0|1]`
+格式：`cfb_nonce:iv=<str>,hmac_key=<str>`
 
 - `iv`：基础 IV 字节串（必填）
   - 仅用于与每连接随机 nonce 拼接后做 SHA-512，派生实际 CFB IV
 - `hmac_key`：握手认证密钥（必填）
   - 用于握手认证：`tag = hmac_sha256(nonce, hmac_key)`
-- `reverse`：是否反转该节点的加/解密角色（可选，默认 `0`）
+- 角色方向由全局 `--reverse` 控制：
   - `0`：入口常规角色（local->remote 加密，remote->local 解密）
   - `1`：出口反向角色（local->remote 解密，remote->local 加密）
 
@@ -121,7 +122,7 @@ name[:k=v,k=v,...]
 - 同一个节点内，`--processor` 按出现顺序构成 pipeline
 - 数据从本地发往远端时，pipeline 按添加顺序执行（`on_local_data`）
 - 数据从远端回本地时，pipeline 按添加顺序的**逆序**执行（`on_remote_data`）
-- 双节点组合时，出口节点应使用**逆序 + 对应 `reverse=1`**
+- 双节点组合时，出口节点只需设置 `--reverse=1`，框架会自动把处理器顺序反转
 
 ```
 例：入口 A（--processor "cfb" --processor "padding"）
@@ -161,8 +162,9 @@ msg801 tunnel \
 msg801 tunnel \
   --listen 0.0.0.0:7001 \
   --remote 127.0.0.1:8080 \
-  --processor "cfb:key=your-key,reverse=1" \
-  --processor "padding:chunk=1024,max=64,seed=42,reverse=1"
+  --processor "padding:chunk=1024,max=64,seed=42" \
+  --processor "cfb:key=your-key" \
+  --reverse=1
 
-注意：双节点组合时，出口节点的处理器顺序应为入口节点的逆序，并使用对应 `reverse=1`。
+注意：双节点组合时，出口节点无需手动调整处理器顺序，`--reverse=1` 会自动完成顺序反转与角色反转。
 ```

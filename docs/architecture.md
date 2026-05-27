@@ -58,7 +58,7 @@ Processor 的装配由 CLI `--processor` 参数驱动，按声明顺序加入 `P
 IV 索引使用全局偏移（`(offset + i) % iv.size()`）而非单次调用的局部位置，
 确保数据分多次送入 `on_local_data` / `on_remote_data` 时 IV 位置不重置。
 
-`cfb:...,reverse=1` 会交换角色，以支持双跳场景中的出口节点。
+`--reverse=1` 会交换角色，并自动将当前节点 processor 顺序反转，以支持双跳场景中的出口节点。
 
 ## Padding 处理器模型
 
@@ -72,7 +72,7 @@ IV 索引使用全局偏移（`(offset + i) % iv.size()`）而非单次调用的
 - `chunk`：每帧最大业务负载
 - `max`：每帧最大随机填充字节数
 - `seed`：随机种子（可选；不配置时使用时间源自动生成）
-- `reverse=1`：切换为反向角色（出口节点）
+- 反向角色由全局 `--reverse=1` 控制（同时自动反转 processor 顺序）
 
 说明：解码按帧头 `payload_len` / `pad_len` 进行，不依赖双方 seed 一致。
 

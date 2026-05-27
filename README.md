@@ -106,8 +106,9 @@ Boost_ROOT=/path/to/boost-1.89.0
 ./dist/bin/msg801 tunnel \
   --listen 0.0.0.0:7001 \
   --remote 127.0.0.1:8080 \
-  --processor "cfb:key=your-key,reverse=1" \
-  --processor "padding:chunk=1024,max=64,seed=42,reverse=1"
+  --processor "padding:chunk=1024,max=64,seed=42" \
+  --processor "cfb:key=your-key" \
+  --reverse=1
 ```
 
 ### 5）Supervisor 配置示例
@@ -130,8 +131,9 @@ stdout_logfile=/var/log/msg801/a-out.log
 command=msg801 tunnel
     --listen 0.0.0.0:7001
     --remote 127.0.0.1:8080
-    --processor "cfb:key=your-key,reverse=1"
-    --processor "padding:chunk=1024,max=64,reverse=1"
+    --processor "padding:chunk=1024,max=64"
+    --processor "cfb:key=your-key"
+    --reverse=1
 directory=%(ENV_HOME)s/project/msg801
 autorestart=true
 stderr_logfile=/var/log/msg801/b-err.log
@@ -142,17 +144,16 @@ stdout_logfile=/var/log/msg801/b-out.log
 
 - `msg801 udp send <ip> <port> <message>`
 - `msg801 udp serve <port>`
-- `msg801 tunnel --listen <ip:port> --remote <ip:port> [--processor <spec>]...`
+- `msg801 tunnel --listen <ip:port> --remote <ip:port> [--processor <spec>]... [--reverse=0|1]`
 
 常用 `--processor` 示例：
 
 - `identity`
 - `cfb:key=secret`
-- `cfb:key=secret,reverse=1`
 - `cfb_nonce:iv=seed-iv,hmac_key=shared-secret`
-- `cfb_nonce:iv=seed-iv,hmac_key=shared-secret,reverse=1`
 - `padding:chunk=1024,max=64,seed=42`
-- `padding:chunk=1024,max=64,seed=42,reverse=1`
+
+`--reverse=1` 会对当前节点的全部处理器启用反向角色，并自动将处理器顺序反转。
 
 ## 日志
 

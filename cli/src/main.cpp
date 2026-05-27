@@ -80,6 +80,7 @@ int main(int argc, char* argv[])
     std::string              tunnel_listen;
     std::string              tunnel_remote;
     std::vector<std::string> tunnel_processors;
+    bool                     tunnel_reverse = false;
     tunnel_cmd->add_option("--listen", tunnel_listen, "Listen address (e.g. 0.0.0.0:8080)")
         ->required();
     tunnel_cmd->add_option("--remote", tunnel_remote, "Remote address (e.g. 10.0.0.1:80)")
@@ -87,6 +88,11 @@ int main(int argc, char* argv[])
     tunnel_cmd->add_option("--processor",
                            tunnel_processors,
                            "Processor in pipeline order, format: name[:k=v,...] (repeatable)");
+    tunnel_cmd
+        ->add_option("--reverse",
+                     tunnel_reverse,
+                     "Reverse all processors and reverse processor order")
+        ->default_val(false);
 
     // --- udp subcommand ---
     auto* udp_cmd = app.add_subcommand("udp", "UDP commands")->group("Commands");
@@ -112,7 +118,7 @@ int main(int argc, char* argv[])
     }
 
     if (tunnel_cmd->parsed()) {
-        msg801::run_tunnel(tunnel_listen, tunnel_remote, tunnel_processors);
+        msg801::run_tunnel(tunnel_listen, tunnel_remote, tunnel_processors, tunnel_reverse);
         return EXIT_SUCCESS;
     }
 

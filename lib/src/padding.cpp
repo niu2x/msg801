@@ -8,30 +8,21 @@
 namespace msg801::tunnel {
 
 PaddingProcessor::PaddingProcessor(size_t chunk_size, size_t pad_max, uint64_t seed, bool reverse)
-: chunk_size_(chunk_size),
+: Processor(reverse),
+  chunk_size_(chunk_size),
   pad_max_(pad_max),
-  reverse_(reverse),
-  local_rng_(seed),
-  remote_rng_(seed ^ 0x9e3779b97f4a7c15ULL)
+  pack_rng_(reverse ? (seed ^ 0x9e3779b97f4a7c15ULL) : seed)
 {
 }
 
-void PaddingProcessor::on_local_data(ByteSpan input, DataBufferList& output)
+void PaddingProcessor::pack(ByteSpan input, DataBufferList& output)
 {
-    if (reverse_) {
-        decode(input, local_decode_buf_, output);
-    } else {
-        encode(input, local_rng_, output);
-    }
+    apply_pack(input, pack_rng_, output);
 }
 
-void PaddingProcessor::on_remote_data(ByteSpan input, DataBufferList& output)
+void PaddingProcessor::unpack(ByteSpan input, DataBufferList& output)
 {
-    if (reverse_) {
-        encode(input, remote_rng_, output);
-    } else {
-        decode(input, remote_decode_buf_, output);
-    }
+    apply_unpack(input, unpack_buffer_, output);
 }
 
 void PaddingProcessor::write_u32(ByteVector& out, uint32_t v)
@@ -48,7 +39,7 @@ uint32_t PaddingProcessor::read_u32(const Byte* p)
            | (static_cast<uint32_t>(p[2]) << 8) | static_cast<uint32_t>(p[3]);
 }
 
-void PaddingProcessor::encode(ByteSpan input, std::mt19937_64& rng, DataBufferList& output)
+void PaddingProcessor::apply_pack(ByteSpan input, std::mt19937_64& rng, DataBufferList& output)
 {
     size_t                                  pos = 0;
     std::uniform_int_distribution<uint32_t> pad_dist(0, static_cast<uint32_t>(pad_max_));
@@ -76,7 +67,7 @@ void PaddingProcessor::encode(ByteSpan input, std::mt19937_64& rng, DataBufferLi
     }
 }
 
-void PaddingProcessor::decode(ByteSpan input, ByteVector& acc, DataBufferList& output)
+void PaddingProcessor::apply_unpack(ByteSpan input, ByteVector& acc, DataBufferList& output)
 {
     constexpr uint64_t HEADER_LEN = 8;
 

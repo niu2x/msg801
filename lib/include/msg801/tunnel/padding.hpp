@@ -13,25 +13,22 @@ class PaddingProcessor : public Processor {
 public:
     PaddingProcessor(size_t chunk_size, size_t pad_max, uint64_t seed, bool reverse = false);
 
-    void on_local_data(ByteSpan input, DataBufferList& output) override;
-
-    void on_remote_data(ByteSpan input, DataBufferList& output) override;
-
 private:
-    size_t chunk_size_;
-    size_t pad_max_;
-    bool reverse_;
-    std::mt19937_64 local_rng_;
-    std::mt19937_64 remote_rng_;
-    ByteVector local_decode_buf_;
-    ByteVector remote_decode_buf_;
+    size_t          chunk_size_;
+    size_t          pad_max_;
+    std::mt19937_64 pack_rng_;
+    ByteVector      unpack_buffer_;
 
-    static void write_u32(ByteVector& out, uint32_t v);
+    static void     write_u32(ByteVector& out, uint32_t v);
     static uint32_t read_u32(const Byte* p);
 
-    void encode(ByteSpan input, std::mt19937_64& rng, DataBufferList& output);
+    void pack(ByteSpan input, DataBufferList& output) override;
 
-    void decode(ByteSpan input, ByteVector& acc, DataBufferList& output);
+    void unpack(ByteSpan input, DataBufferList& output) override;
+
+    void apply_pack(ByteSpan input, std::mt19937_64& rng, DataBufferList& output);
+
+    void apply_unpack(ByteSpan input, ByteVector& acc, DataBufferList& output);
 };
 
 } // namespace msg801::tunnel

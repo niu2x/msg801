@@ -60,30 +60,24 @@ ByteVector hmac_sha256(ByteSpan key, ByteSpan data)
 } // namespace
 
 CfbProcessor::CfbProcessor(ByteSpan key, bool reverse)
-: enc_iv_(key.begin(), key.end()),
-  dec_iv_(key.begin(), key.end()),
-  reverse_(reverse)
+: Processor(reverse),
+  pack_iv_(key.begin(), key.end()),
+  unpack_iv_(key.begin(), key.end())
 {
-    while (enc_iv_.size() < 8) {
-        enc_iv_.push_back(static_cast<Byte>(enc_iv_.size()));
-        dec_iv_.push_back(static_cast<Byte>(dec_iv_.size()));
+    while (pack_iv_.size() < 8) {
+        pack_iv_.push_back(static_cast<Byte>(pack_iv_.size()));
+        unpack_iv_.push_back(static_cast<Byte>(unpack_iv_.size()));
     }
 }
 
-void CfbProcessor::on_local_data(ByteSpan input, DataBufferList& output)
+void CfbProcessor::pack(ByteSpan input, DataBufferList& output)
 {
-    if (reverse_)
-        decrypt(input, output, dec_iv_, dec_offset_);
-    else
-        encrypt(input, output, enc_iv_, enc_offset_);
+    encrypt(input, output, pack_iv_, pack_offset_);
 }
 
-void CfbProcessor::on_remote_data(ByteSpan input, DataBufferList& output)
+void CfbProcessor::unpack(ByteSpan input, DataBufferList& output)
 {
-    if (reverse_)
-        encrypt(input, output, enc_iv_, enc_offset_);
-    else
-        decrypt(input, output, dec_iv_, dec_offset_);
+    decrypt(input, output, unpack_iv_, unpack_offset_);
 }
 
 void CfbProcessor::mix(Byte cipher, ByteVector& iv, size_t pos)
@@ -119,64 +113,38 @@ void CfbProcessor::decrypt(ByteSpan input, DataBufferList& output, ByteVector& i
 }
 
 CfbNonceProcessor::CfbNonceProcessor(ByteSpan iv, ByteSpan hmac_key, bool reverse)
-: base_iv_(iv.begin(), iv.end()),
-  hmac_key_(hmac_key.begin(), hmac_key.end()),
-  reverse_(reverse)
+: Processor(reverse),
+  base_iv_(iv.begin(), iv.end()),
+  hmac_key_(hmac_key.begin(), hmac_key.end())
 {
 }
 
-void CfbNonceProcessor::on_local_data(ByteSpan input, DataBufferList& output)
+void CfbNonceProcessor::pack(ByteSpan input, DataBufferList& output)
 {
-    if (reverse_) {
-        if (!dec_ready_) {
-            dec_handshake_buffer_.insert(dec_handshake_buffer_.end(), input.begin(), input.end());
-            if (dec_handshake_buffer_.size() < HANDSHAKE_PACKET_SIZE) {
-                return;
-            }
-
-            ByteSpan packet(dec_handshake_buffer_.data(), HANDSHAKE_PACKET_SIZE);
-            init_decrypt(packet);
-
-            ByteSpan remain(dec_handshake_buffer_.data() + HANDSHAKE_PACKET_SIZE,
-                            dec_handshake_buffer_.size() - HANDSHAKE_PACKET_SIZE);
-            decrypt(remain, output, dec_iv_, dec_offset_);
-            dec_handshake_buffer_.clear();
-            return;
-        }
-        decrypt(input, output, dec_iv_, dec_offset_);
-    } else {
-        if (!enc_ready_) {
-            init_encrypt(output);
-        }
-        encrypt(input, output, enc_iv_, enc_offset_);
+    if (!pack_ready_) {
+        init_pack(output);
     }
+    encrypt(input, output, pack_iv_, pack_offset_);
 }
 
-void CfbNonceProcessor::on_remote_data(ByteSpan input, DataBufferList& output)
+void CfbNonceProcessor::unpack(ByteSpan input, DataBufferList& output)
 {
-    if (reverse_) {
-        if (!enc_ready_) {
-            init_encrypt(output);
-        }
-        encrypt(input, output, enc_iv_, enc_offset_);
-    } else {
-        if (!dec_ready_) {
-            dec_handshake_buffer_.insert(dec_handshake_buffer_.end(), input.begin(), input.end());
-            if (dec_handshake_buffer_.size() < HANDSHAKE_PACKET_SIZE) {
-                return;
-            }
-
-            ByteSpan packet(dec_handshake_buffer_.data(), HANDSHAKE_PACKET_SIZE);
-            init_decrypt(packet);
-
-            ByteSpan remain(dec_handshake_buffer_.data() + HANDSHAKE_PACKET_SIZE,
-                            dec_handshake_buffer_.size() - HANDSHAKE_PACKET_SIZE);
-            decrypt(remain, output, dec_iv_, dec_offset_);
-            dec_handshake_buffer_.clear();
+    if (!unpack_ready_) {
+        unpack_handshake_buffer_.insert(unpack_handshake_buffer_.end(), input.begin(), input.end());
+        if (unpack_handshake_buffer_.size() < HANDSHAKE_PACKET_SIZE) {
             return;
         }
-        decrypt(input, output, dec_iv_, dec_offset_);
+
+        ByteSpan packet(unpack_handshake_buffer_.data(), HANDSHAKE_PACKET_SIZE);
+        init_unpack(packet);
+
+        ByteSpan remain(unpack_handshake_buffer_.data() + HANDSHAKE_PACKET_SIZE,
+                        unpack_handshake_buffer_.size() - HANDSHAKE_PACKET_SIZE);
+        decrypt(remain, output, unpack_iv_, unpack_offset_);
+        unpack_handshake_buffer_.clear();
+        return;
     }
+    decrypt(input, output, unpack_iv_, unpack_offset_);
 }
 
 void CfbNonceProcessor::mix(Byte cipher, ByteVector& iv, size_t pos)
@@ -217,7 +185,7 @@ void CfbNonceProcessor::decrypt(ByteSpan        input,
     output.push_back(std::move(buf));
 }
 
-void CfbNonceProcessor::init_encrypt(DataBufferList& output)
+void CfbNonceProcessor::init_pack(DataBufferList& output)
 {
     ByteVector nonce = make_nonce();
     ByteVector tag   = hmac_sha256(ByteSpan(hmac_key_.data(), hmac_key_.size()),
@@ -230,11 +198,11 @@ void CfbNonceProcessor::init_encrypt(DataBufferList& output)
     output.push_back(std::move(handshake));
 
     ByteVector iv = derive_iv(ByteSpan(nonce.data(), nonce.size()));
-    enc_iv_       = std::move(iv);
-    enc_ready_    = true;
+    pack_iv_      = std::move(iv);
+    pack_ready_   = true;
 }
 
-void CfbNonceProcessor::init_decrypt(ByteSpan packet)
+void CfbNonceProcessor::init_unpack(ByteSpan packet)
 {
     ByteSpan   expected_tag(packet.data(), TAG_SIZE);
     ByteSpan   nonce(packet.data() + TAG_SIZE, NONCE_SIZE);
@@ -247,8 +215,8 @@ void CfbNonceProcessor::init_decrypt(ByteSpan packet)
     }
 
     ByteVector iv = derive_iv(nonce);
-    dec_iv_       = std::move(iv);
-    dec_ready_    = true;
+    unpack_iv_    = std::move(iv);
+    unpack_ready_ = true;
 }
 
 ByteVector CfbNonceProcessor::derive_iv(ByteSpan nonce) const

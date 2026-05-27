@@ -398,7 +398,8 @@ if "$TUNNEL_BIN" tunnel --help 2>/dev/null | grep -q processor; then
     "$TUNNEL_BIN" tunnel \
         --listen "127.0.0.1:$XOR_DECODE_PORT" \
         --remote "127.0.0.1:$XOR_ECHO_PORT" \
-        --processor "cfb:key=$XOR_KEY,reverse=1" &
+        --processor "cfb:key=$XOR_KEY" \
+        --reverse=1 &
 
     # Tunnel A: encrypt side (CFB encode), listen external → B
     "$TUNNEL_BIN" tunnel \
@@ -426,7 +427,8 @@ if "$TUNNEL_BIN" tunnel --help 2>/dev/null | grep -q processor; then
     "$TUNNEL_BIN" tunnel \
         --listen "127.0.0.1:$CFB_NONCE_DECODE_PORT" \
         --remote "127.0.0.1:$CFB_NONCE_ECHO_PORT" \
-        --processor "cfb_nonce:iv=$CFB_NONCE_IV,hmac_key=$CFB_NONCE_HMAC_KEY,reverse=1" &
+        --processor "cfb_nonce:iv=$CFB_NONCE_IV,hmac_key=$CFB_NONCE_HMAC_KEY" \
+        --reverse=1 &
 
     # Tunnel A: encrypt side (CFB_NONCE encode), listen external -> B
     "$TUNNEL_BIN" tunnel \
@@ -452,7 +454,8 @@ if "$TUNNEL_BIN" tunnel --help 2>/dev/null | grep -q processor; then
     "$TUNNEL_BIN" tunnel \
         --listen "127.0.0.1:$PAD_DECODE_PORT" \
         --remote "127.0.0.1:$PAD_ECHO_PORT" \
-        --processor "padding:chunk=$PAD_CHUNK,max=$PAD_MAX,reverse=1" &
+        --processor "padding:chunk=$PAD_CHUNK,max=$PAD_MAX" \
+        --reverse=1 &
 
     "$TUNNEL_BIN" tunnel \
         --listen "127.0.0.1:$PAD_LISTEN_PORT" \
@@ -463,7 +466,7 @@ if "$TUNNEL_BIN" tunnel --help 2>/dev/null | grep -q processor; then
     run_padding_tests
 fi
 
-# padding+cfb pipeline two-hop tests: A(cfb→pad) → B(unpad→decfb) → echo
+# padding+cfb pipeline two-hop tests: A(pad→cfb) → B(decfb→unpad) → echo
 PC_ECHO_PORT=19991
 PC_DECODE_PORT=19990
 PC_LISTEN_PORT=${9:-19989}
@@ -513,20 +516,21 @@ if "$TUNNEL_BIN" tunnel --help 2>/dev/null | grep -q processor; then
     "$TUNNEL_BIN" tunnel \
         --listen "127.0.0.1:$PC_DECODE_PORT" \
         --remote "127.0.0.1:$PC_ECHO_PORT" \
-        --processor "padding:chunk=1024,max=64,reverse=1" \
-        --processor "cfb:key=$PC_KEY,reverse=1" &
+        --processor "padding:chunk=1024,max=64" \
+        --processor "cfb:key=$PC_KEY" \
+        --reverse=1 &
 
     "$TUNNEL_BIN" tunnel \
         --listen "127.0.0.1:$PC_LISTEN_PORT" \
         --remote "127.0.0.1:$PC_DECODE_PORT" \
-        --processor "cfb:key=$PC_KEY" \
-        --processor "padding:chunk=1024,max=64" &
+        --processor "padding:chunk=1024,max=64" \
+        --processor "cfb:key=$PC_KEY" &
     sleep 0.5
 
     run_padding_cfb_tests
 fi
 
-# padding+cfb_nonce pipeline two-hop tests: A(cfb_nonce→pad) → B(unpad→decfb_nonce) → echo
+# padding+cfb_nonce pipeline two-hop tests: A(pad→cfb_nonce) → B(decfb_nonce→unpad) → echo
 PNC_ECHO_PORT=19985
 PNC_DECODE_PORT=19984
 PNC_LISTEN_PORT=${14:-19983}
@@ -577,14 +581,15 @@ if "$TUNNEL_BIN" tunnel --help 2>/dev/null | grep -q processor; then
     "$TUNNEL_BIN" tunnel \
         --listen "127.0.0.1:$PNC_DECODE_PORT" \
         --remote "127.0.0.1:$PNC_ECHO_PORT" \
-        --processor "padding:chunk=1024,max=64,reverse=1" \
-        --processor "cfb_nonce:iv=$PNC_IV,hmac_key=$PNC_HMAC_KEY,reverse=1" &
+        --processor "padding:chunk=1024,max=64" \
+        --processor "cfb_nonce:iv=$PNC_IV,hmac_key=$PNC_HMAC_KEY" \
+        --reverse=1 &
 
     "$TUNNEL_BIN" tunnel \
         --listen "127.0.0.1:$PNC_LISTEN_PORT" \
         --remote "127.0.0.1:$PNC_DECODE_PORT" \
-        --processor "cfb_nonce:iv=$PNC_IV,hmac_key=$PNC_HMAC_KEY" \
-        --processor "padding:chunk=1024,max=64" &
+        --processor "padding:chunk=1024,max=64" \
+        --processor "cfb_nonce:iv=$PNC_IV,hmac_key=$PNC_HMAC_KEY" &
     sleep 0.5
 
     run_padding_cfb_nonce_tests
