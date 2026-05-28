@@ -102,17 +102,21 @@ int main(int argc, char* argv[])
     std::string relay_server;
     uint16_t    relay_server_port {};
     std::string relay_id;
-    std::string relay_role;
-    std::string relay_extra;
-    bool        relay_is_server = false;
+    std::string relay_listen;
+    std::string relay_target;
+    bool        relay_is_server  = false;
+    bool        relay_is_visitor = false;
+    bool        relay_is_provider = false;
 
     relay_cmd->add_flag("--server", relay_is_server, "Run as relay server (A)");
+    relay_cmd->add_flag("--visitor", relay_is_visitor, "Run as visitor (B)");
+    relay_cmd->add_flag("--provider", relay_is_provider, "Run as provider (C)");
     relay_cmd->add_option("--port", relay_server_port, "Server port")->type_name("PORT");
     relay_cmd->add_option("--connect", relay_server, "Server address to connect to")
         ->type_name("IP");
     relay_cmd->add_option("--id", relay_id, "Tunnel ID");
-    relay_cmd->add_option("--role", relay_role, "Node role: B or C");
-    relay_cmd->add_option("--extra", relay_extra, "Listen addr (B) or target addr (C)");
+    relay_cmd->add_option("--listen", relay_listen, "Visitor listen address (e.g. 0.0.0.0:8080)");
+    relay_cmd->add_option("--target", relay_target, "Provider target address (e.g. 10.0.0.5:80)");
 
     // --- udp subcommand ---
     auto* udp_cmd = app.add_subcommand("udp", "UDP commands")->group("Commands");
@@ -140,22 +144,36 @@ int main(int argc, char* argv[])
     if (relay_cmd->parsed()) {
         if (relay_is_server) {
             msg801::relay::run_server(relay_server_port);
-        } else {
-            if (relay_role.empty() || relay_role.size() != 1
-                || (relay_role[0] != 'B' && relay_role[0] != 'C')) {
-                std::cerr << "Error: --role must be B or C\n";
-                return EXIT_FAILURE;
-            }
-            if (relay_server.empty()) {
-                std::cerr << "Error: --connect is required for node mode\n";
-                return EXIT_FAILURE;
-            }
-            msg801::relay::run_node(relay_server,
-                                    relay_server_port,
-                                    relay_id,
-                                    relay_role[0],
-                                    relay_extra);
+            return EXIT_SUCCESS;
         }
+
+        char role = 0;
+        if (relay_is_visitor) {
+            role = 'B';
+            if (relay_listen.empty()) {
+                std::cerr << "Error: --listen is required for visitor\n";
+                return EXIT_FAILURE;
+            }
+        } else if (relay_is_provider) {
+            role = 'C';
+            if (relay_target.empty()) {
+                std::cerr << "Error: --target is required for provider\n";
+                return EXIT_FAILURE;
+            }
+        } else {
+            std::cerr << "Error: specify --visitor (B) or --provider (C)\n";
+            return EXIT_FAILURE;
+        }
+
+        if (relay_server.empty()) {
+            std::cerr << "Error: --connect is required for node mode\n";
+            return EXIT_FAILURE;
+        }
+        msg801::relay::run_node(relay_server,
+                                relay_server_port,
+                                relay_id,
+                                role,
+                                role == 'B' ? relay_listen : relay_target);
         return EXIT_SUCCESS;
     }
 
