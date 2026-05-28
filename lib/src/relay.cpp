@@ -66,15 +66,12 @@ asio::awaitable<std::optional<Frame>> read_frame(tcp::socket& sock)
 {
     std::array<Byte, 4>       hdr;
     boost::system::error_code ec;
-    auto n = co_await asio::async_read(sock, asio::buffer(hdr),
-                                       redirect_error(use_awaitable, ec));
+    auto n = co_await asio::async_read(sock, asio::buffer(hdr), redirect_error(use_awaitable, ec));
     if (ec || n == 0)
         co_return std::nullopt;
 
-    uint32_t len = (static_cast<uint32_t>(hdr[0]) << 24)
-                   | (static_cast<uint32_t>(hdr[1]) << 16)
-                   | (static_cast<uint32_t>(hdr[2]) << 8)
-                   | static_cast<uint32_t>(hdr[3]);
+    uint32_t len = (static_cast<uint32_t>(hdr[0]) << 24) | (static_cast<uint32_t>(hdr[1]) << 16)
+                   | (static_cast<uint32_t>(hdr[2]) << 8) | static_cast<uint32_t>(hdr[3]);
 
     if (len < 1)
         co_return std::nullopt;
@@ -86,18 +83,17 @@ asio::awaitable<std::optional<Frame>> read_frame(tcp::socket& sock)
                       ByteVector(payload.begin() + 1, payload.end()) };
 }
 
-asio::awaitable<void> write_frame(tcp::socket& sock, Method method,
-                                  const void* data, size_t len)
+asio::awaitable<void> write_frame(tcp::socket& sock, Method method, const void* data, size_t len)
 {
-    uint32_t total = static_cast<uint32_t>(1 + len);
+    uint32_t            total = static_cast<uint32_t>(1 + len);
     std::array<Byte, 4> hdr;
     hdr[0] = static_cast<Byte>((total >> 24) & 0xFF);
     hdr[1] = static_cast<Byte>((total >> 16) & 0xFF);
     hdr[2] = static_cast<Byte>((total >> 8) & 0xFF);
     hdr[3] = static_cast<Byte>(total & 0xFF);
 
-    Byte method_byte = static_cast<Byte>(method);
-    std::array<asio::const_buffer, 3> bufs = {
+    Byte                              method_byte = static_cast<Byte>(method);
+    std::array<asio::const_buffer, 3> bufs        = {
         asio::buffer(hdr),
         asio::buffer(&method_byte, 1),
         asio::buffer(data, len),
@@ -110,15 +106,14 @@ asio::awaitable<void> write_frame(tcp::socket& sock, Method method)
     return write_frame(sock, method, nullptr, 0);
 }
 
-asio::awaitable<void> write_frame(tcp::socket& sock, Method method,
-                                  const ByteVector& body)
+asio::awaitable<void> write_frame(tcp::socket& sock, Method method, const ByteVector& body)
 {
     co_await write_frame(sock, method, body.data(), body.size());
 }
 
 ByteVector build_frame_bytes(Method method, const void* data, size_t len)
 {
-    uint32_t total = static_cast<uint32_t>(1 + len);
+    uint32_t   total = static_cast<uint32_t>(1 + len);
     ByteVector frame;
     frame.reserve(4 + total);
     frame.push_back(static_cast<Byte>((total >> 24) & 0xFF));
@@ -127,7 +122,8 @@ ByteVector build_frame_bytes(Method method, const void* data, size_t len)
     frame.push_back(static_cast<Byte>(total & 0xFF));
     frame.push_back(static_cast<Byte>(method));
     if (data && len > 0)
-        frame.insert(frame.end(), static_cast<const Byte*>(data),
+        frame.insert(frame.end(),
+                     static_cast<const Byte*>(data),
                      static_cast<const Byte*>(data) + len);
     return frame;
 }
@@ -137,12 +133,12 @@ ByteVector build_uuid_body(const std::string& uuid)
     return ByteVector(uuid.begin(), uuid.end());
 }
 
-ByteVector build_uuid_data_body(const std::string& uuid,
-                                const void* data, size_t len)
+ByteVector build_uuid_data_body(const std::string& uuid, const void* data, size_t len)
 {
     ByteVector body(uuid.begin(), uuid.end());
     if (data && len > 0)
-        body.insert(body.end(), static_cast<const Byte*>(data),
+        body.insert(body.end(),
+                    static_cast<const Byte*>(data),
                     static_cast<const Byte*>(data) + len);
     return body;
 }
@@ -154,15 +150,16 @@ ByteVector build_uuid_data_body(const std::string& uuid,
 std::string generate_uuid()
 {
     static std::mt19937_64 rng(std::random_device {}());
-    uint64_t hi = rng();
-    uint64_t lo = rng();
+    uint64_t               hi = rng();
+    uint64_t               lo = rng();
     hi &= ~0xF000ULL;
     hi |= 0x4000ULL;
     lo &= ~0xC000000000000000ULL;
     lo |= 0x8000000000000000ULL;
 
     std::array<char, 37> buf;
-    std::snprintf(buf.data(), buf.size(),
+    std::snprintf(buf.data(),
+                  buf.size(),
                   "%08x-%04x-%04x-%04x-%012llx",
                   static_cast<unsigned>(hi >> 32),
                   static_cast<unsigned>((hi >> 16) & 0xFFFF),
@@ -177,7 +174,7 @@ std::string generate_uuid()
 // =========================================================================
 
 struct AConn : std::enable_shared_from_this<AConn> {
-    tcp::socket                                  sock;
+    tcp::socket                                   sock;
     asio::strand<asio::io_context::executor_type> strand;
 
     AConn(asio::io_context& ctx)
@@ -187,13 +184,17 @@ struct AConn : std::enable_shared_from_this<AConn> {
     }
 };
 
-asio::awaitable<void> aconn_write(std::shared_ptr<AConn> conn,
-                                  Method method, ByteVector body)
+asio::awaitable<void> aconn_write(std::shared_ptr<AConn> conn, Method method, ByteVector body)
 {
-    co_await asio::post(asio::bind_executor(conn->strand, use_awaitable));
+    boost::system::error_code ec;
+    co_await asio::post(asio::bind_executor(conn->strand, redirect_error(use_awaitable, ec)));
+    if (ec)
+        co_return;
     auto frame = build_frame_bytes(method, body.data(), body.size());
-    co_await asio::async_write(conn->sock, asio::buffer(frame),
-                               asio::bind_executor(conn->strand, use_awaitable));
+    co_await asio::async_write(
+        conn->sock,
+        asio::buffer(frame),
+        asio::bind_executor(conn->strand, redirect_error(use_awaitable, ec)));
 }
 
 } // namespace
@@ -209,7 +210,9 @@ struct Peer : std::enable_shared_from_this<Peer> {
     char        role; // 'B' or 'C'
 
     Peer(tcp::socket s, std::string id_, char role_)
-    : sock(std::move(s)), id(std::move(id_)), role(role_)
+    : sock(std::move(s)),
+      id(std::move(id_)),
+      role(role_)
     {
     }
 };
@@ -250,7 +253,11 @@ asio::awaitable<void> pump_one_way(std::shared_ptr<Peer>  from,
     }
 
     bool was_dead;
-    { std::lock_guard<std::mutex> lock(match->dead_mtx); was_dead = match->dead; match->dead = true; }
+    {
+        std::lock_guard<std::mutex> lock(match->dead_mtx);
+        was_dead    = match->dead;
+        match->dead = true;
+    }
     if (!was_dead) {
         boost::system::error_code ec;
         co_await write_frame(to->sock, EOF_);
@@ -268,8 +275,7 @@ void run_server(uint16_t port)
     tcp::acceptor    acceptor { ctx, tcp::endpoint(tcp::v4(), port) };
     spdlog::info("IDR server listening on port {}", port);
 
-    auto pairs = std::make_shared<
-        std::unordered_map<std::string, std::shared_ptr<Match>>>();
+    auto pairs = std::make_shared<std::unordered_map<std::string, std::shared_ptr<Match>>>();
 
     co_spawn(
         ctx,
@@ -294,9 +300,9 @@ void run_server(uint16_t port)
                             co_return;
 
                         // Parse "id B" or "id C"
-                        auto view  = std::string_view(
-                            reinterpret_cast<const char*>(body.data()), body.size());
-                        auto sp    = view.find(' ');
+                        auto view = std::string_view(reinterpret_cast<const char*>(body.data()),
+                                                     body.size());
+                        auto sp   = view.find(' ');
                         if (sp == std::string_view::npos || sp + 2 > view.size())
                             co_return;
 
@@ -305,8 +311,7 @@ void run_server(uint16_t port)
                         if (role != 'B' && role != 'C')
                             co_return;
 
-                        auto peer = std::make_shared<Peer>(
-                            std::move(sock), id, role);
+                        auto peer = std::make_shared<Peer>(std::move(sock), id, role);
 
                         auto& m = (*pairs)[id];
                         if (!m)
@@ -315,7 +320,8 @@ void run_server(uint16_t port)
                         // Reject duplicate registration
                         if ((role == 'B' && m->b) || (role == 'C' && m->c)) {
                             spdlog::warn("relay A: duplicate {} for id {}",
-                                         (role == 'B' ? "B" : "C"), id);
+                                         (role == 'B' ? "B" : "C"),
+                                         id);
                             co_await write_frame(peer->sock, EOF_);
                             co_return;
                         }
@@ -325,8 +331,7 @@ void run_server(uint16_t port)
                         else
                             m->c = peer;
 
-                        spdlog::info("relay A: {} registered id={}",
-                                     (role == 'B' ? "B" : "C"), id);
+                        spdlog::info("relay A: {} registered id={}", (role == 'B' ? "B" : "C"), id);
 
                         if (m->b && m->c) {
                             co_await write_frame(m->b->sock, READY);
@@ -334,9 +339,11 @@ void run_server(uint16_t port)
                             spdlog::info("relay A: pair {} ready", id);
 
                             co_spawn(peer->sock.get_executor(),
-                                     pump_one_way(m->b, m->c, m), detached);
+                                     pump_one_way(m->b, m->c, m),
+                                     detached);
                             co_spawn(peer->sock.get_executor(),
-                                     pump_one_way(m->c, m->b, m), detached);
+                                     pump_one_way(m->c, m->b, m),
+                                     detached);
                         }
                     }(std::move(sock), pairs),
                     detached);
@@ -357,21 +364,22 @@ namespace {
 // -----------------------------------------------------------------------
 
 struct ClientSession {
-    std::string  uuid;
-    tcp::socket  client;
-    bool         half_close_recv = false;
-    bool         half_close_send = false;
-    bool         closed          = false;
+    std::string uuid;
+    tcp::socket client;
+    bool        half_close_recv = false;
+    bool        half_close_send = false;
+    bool        closed          = false;
 
     ClientSession(tcp::socket s, std::string u)
-    : uuid(std::move(u)), client(std::move(s))
+    : uuid(std::move(u)),
+      client(std::move(s))
     {
     }
 };
 
-asio::awaitable<void> run_visitor(asio::io_context&    ctx,
+asio::awaitable<void> run_visitor(asio::io_context&      ctx,
                                   std::shared_ptr<AConn> aconn,
-                                  std::string_view     listen_addr)
+                                  std::string_view       listen_addr)
 {
     auto colon = listen_addr.rfind(':');
     if (colon == std::string_view::npos) {
@@ -382,12 +390,11 @@ asio::awaitable<void> run_visitor(asio::io_context&    ctx,
     auto listen_port = static_cast<uint16_t>(
         std::stoul(std::string(listen_addr.substr(colon + 1))));
 
-    tcp::acceptor acceptor { ctx,
-                             { asio::ip::make_address(listen_ip), listen_port } };
+    tcp::acceptor acceptor { ctx, { asio::ip::make_address(listen_ip), listen_port } };
     spdlog::info("relay B: listening on {}:{}", listen_ip, listen_port);
 
-    auto sessions = std::make_shared<
-        std::unordered_map<std::string, std::shared_ptr<ClientSession>>>();
+    auto sessions
+        = std::make_shared<std::unordered_map<std::string, std::shared_ptr<ClientSession>>>();
 
     // Reader coroutine: read frames from A, dispatch by uuid
     co_spawn(
@@ -407,67 +414,67 @@ asio::awaitable<void> run_visitor(asio::io_context&    ctx,
                     if (frame.body.size() < UUID_BYTES)
                         continue;
 
-                    auto uuid = std::string(frame.body.begin(),
-                                            frame.body.begin() + UUID_BYTES);
-                    auto it = sessions->find(uuid);
+                    auto uuid = std::string(frame.body.begin(), frame.body.begin() + UUID_BYTES);
+                    auto it   = sessions->find(uuid);
                     if (it == sessions->end())
                         continue;
                     auto& s = it->second;
 
                     switch (frame.method) {
-                    case SESSION_OK:
-                        spdlog::info("relay B: session {} ready", uuid);
-                        break;
+                        case SESSION_OK:
+                            spdlog::info("relay B: session {} ready", uuid);
+                            break;
 
-                    case SESSION_ERR: {
-                        spdlog::warn("relay B: session {} rejected", uuid);
-                        s->closed = true;
-                        boost::system::error_code ec;
-                        s->client.close(ec);
-                        sessions->erase(it);
-                        break;
-                    }
-
-                    case DATA: {
-                        auto data_len = frame.body.size() - UUID_BYTES;
-                        if (data_len > 0) {
+                        case SESSION_ERR: {
+                            spdlog::warn("relay B: session {} rejected", uuid);
+                            s->closed = true;
                             boost::system::error_code ec;
-                            co_await asio::async_write(
-                                s->client,
-                                asio::buffer(frame.body.data() + UUID_BYTES, data_len),
-                                redirect_error(use_awaitable, ec));
-                            if (ec) {
-                                co_await aconn_write(aconn, SESSION_CLOSE,
-                                                     build_uuid_body(uuid));
+                            s->client.close(ec);
+                            sessions->erase(it);
+                            break;
+                        }
+
+                        case DATA: {
+                            auto data_len = frame.body.size() - UUID_BYTES;
+                            if (data_len > 0) {
+                                boost::system::error_code ec;
+                                co_await asio::async_write(
+                                    s->client,
+                                    asio::buffer(frame.body.data() + UUID_BYTES, data_len),
+                                    redirect_error(use_awaitable, ec));
+                                if (ec) {
+                                    co_await aconn_write(aconn,
+                                                         SESSION_CLOSE,
+                                                         build_uuid_body(uuid));
+                                    s->closed = true;
+                                    s->client.close(ec);
+                                    sessions->erase(it);
+                                }
+                            }
+                            break;
+                        }
+
+                        case DATA_EOF: {
+                            s->half_close_recv = true;
+                            boost::system::error_code ec;
+                            s->client.shutdown(tcp::socket::shutdown_send, ec);
+                            if (s->half_close_send) {
                                 s->closed = true;
-                                s->client.close(ec);
                                 sessions->erase(it);
                             }
+                            break;
                         }
-                        break;
-                    }
 
-                    case DATA_EOF: {
-                        s->half_close_recv = true;
-                        boost::system::error_code ec;
-                        s->client.shutdown(tcp::socket::shutdown_send, ec);
-                        if (s->half_close_send) {
+                        case SESSION_CLOSE: {
                             s->closed = true;
+                            boost::system::error_code ec;
+                            s->client.close(ec);
                             sessions->erase(it);
+                            break;
                         }
-                        break;
-                    }
 
-                    case SESSION_CLOSE: {
-                        s->closed = true;
-                        boost::system::error_code ec;
-                        s->client.close(ec);
-                        sessions->erase(it);
-                        break;
-                    }
-
-                    default:
-                        break;
+                        default:
+                            break;
                     }
                 }
             } catch (...) {
@@ -481,7 +488,7 @@ asio::awaitable<void> run_visitor(asio::io_context&    ctx,
             sessions->clear();
 
             co_return;
-        }(),
+        },
         detached);
 
     // Accept loop
@@ -494,8 +501,8 @@ asio::awaitable<void> run_visitor(asio::io_context&    ctx,
         }
         spdlog::info("relay B: accepted client");
 
-        auto uuid = generate_uuid();
-        auto sess = std::make_shared<ClientSession>(std::move(client), uuid);
+        auto uuid         = generate_uuid();
+        auto sess         = std::make_shared<ClientSession>(std::move(client), uuid);
         (*sessions)[uuid] = sess;
 
         co_await aconn_write(aconn, NEW_SESSION, build_uuid_body(uuid));
@@ -508,34 +515,32 @@ asio::awaitable<void> run_visitor(asio::io_context&    ctx,
                 try {
                     while (!sess->closed) {
                         boost::system::error_code ec;
-                        auto n = co_await sess->client.async_read_some(
+                        auto                      n = co_await sess->client.async_read_some(
                             asio::buffer(buf),
                             redirect_error(use_awaitable, ec));
                         if (ec == asio::error::eof || n == 0) {
                             sess->half_close_send = true;
-                            co_await aconn_write(aconn, DATA_EOF,
-                                                 build_uuid_body(sess->uuid));
+                            co_await aconn_write(aconn, DATA_EOF, build_uuid_body(sess->uuid));
                             if (sess->half_close_recv)
                                 sess->closed = true;
                             break;
                         }
                         if (ec) {
-                            co_await aconn_write(aconn, SESSION_CLOSE,
-                                                 build_uuid_body(sess->uuid));
+                            co_await aconn_write(aconn, SESSION_CLOSE, build_uuid_body(sess->uuid));
                             sess->closed = true;
                             break;
                         }
-                        co_await aconn_write(
-                            aconn, DATA,
-                            build_uuid_data_body(sess->uuid, buf.data(), n));
+                        co_await aconn_write(aconn,
+                                             DATA,
+                                             build_uuid_data_body(sess->uuid, buf.data(), n));
                     }
                 } catch (...) {
-                    co_await aconn_write(aconn, SESSION_CLOSE,
-                                         build_uuid_body(sess->uuid));
+                    co_await aconn_write(aconn, SESSION_CLOSE, build_uuid_body(sess->uuid));
                     sess->closed = true;
                 }
 
-                sessions->erase(sess->uuid);
+                if (sess->closed)
+                    sessions->erase(sess->uuid);
             },
             detached);
     }
@@ -553,14 +558,14 @@ asio::awaitable<void> run_visitor(asio::io_context&    ctx,
 // -----------------------------------------------------------------------
 
 struct SessionState {
-    std::string              uuid;
+    std::string                  uuid;
     std::shared_ptr<tcp::socket> remote;
-    std::deque<ByteVector>   arrival_buffer;
-    bool                     remote_connected = false;
-    bool                     connecting       = false;
-    bool                     half_close_recv  = false;
-    bool                     half_close_send  = false;
-    bool                     closed           = false;
+    std::deque<ByteVector>       arrival_buffer;
+    bool                         remote_connected = false;
+    bool                         connecting       = false;
+    bool                         half_close_recv  = false;
+    bool                         half_close_send  = false;
+    bool                         closed           = false;
 
     explicit SessionState(std::string u)
     : uuid(std::move(u))
@@ -569,8 +574,8 @@ struct SessionState {
 };
 
 asio::awaitable<void> run_provider(asio::io_context&      ctx,
-                                   std::shared_ptr<AConn>   aconn,
-                                   std::string_view         target_addr)
+                                   std::shared_ptr<AConn> aconn,
+                                   std::string_view       target_addr)
 {
     auto colon = target_addr.rfind(':');
     if (colon == std::string_view::npos) {
@@ -584,8 +589,8 @@ asio::awaitable<void> run_provider(asio::io_context&      ctx,
 
     spdlog::info("relay C: target {}:{}, ready", target_ip, target_port);
 
-    auto sessions = std::make_shared<
-        std::unordered_map<std::string, std::shared_ptr<SessionState>>>();
+    auto sessions
+        = std::make_shared<std::unordered_map<std::string, std::shared_ptr<SessionState>>>();
 
     try {
         while (true) {
@@ -600,146 +605,156 @@ asio::awaitable<void> run_provider(asio::io_context&      ctx,
 
             switch (frame.method) {
 
-            case FORWARD_SESSION: {
-                auto uuid = std::string(frame.body.begin(), frame.body.end());
-                spdlog::info("relay C: new session {}", uuid);
+                case FORWARD_SESSION: {
+                    auto uuid = std::string(frame.body.begin(), frame.body.end());
+                    spdlog::info("relay C: new session {}", uuid);
 
-                auto state        = std::make_shared<SessionState>(uuid);
-                state->connecting = true;
-                (*sessions)[uuid] = state;
+                    auto state        = std::make_shared<SessionState>(uuid);
+                    state->connecting = true;
+                    (*sessions)[uuid] = state;
 
-                // Connect to target asynchronously
-                co_spawn(
-                    ctx.get_executor(),
-                    [aconn, state, target_ep, sessions]() -> asio::awaitable<void> {
-                        auto remote = std::make_shared<tcp::socket>(
-                            aconn->sock.get_executor());
-                        boost::system::error_code ec;
-                        co_await remote->async_connect(
-                            target_ep, redirect_error(use_awaitable, ec));
+                    // Connect to target asynchronously
+                    co_spawn(
+                        ctx.get_executor(),
+                        [aconn, state, target_ep, sessions]() -> asio::awaitable<void> {
+                            auto remote = std::make_shared<tcp::socket>(aconn->sock.get_executor());
+                            boost::system::error_code ec;
+                            co_await remote->async_connect(target_ep,
+                                                           redirect_error(use_awaitable, ec));
 
-                        if (ec) {
-                            spdlog::warn("relay C: connect target failed {}: {}",
-                                         state->uuid, ec.message());
-                            co_await aconn_write(aconn, SESSION_ERR,
-                                                 build_uuid_body(state->uuid));
-                            state->closed = true;
-                            sessions->erase(state->uuid);
-                            co_return;
-                        }
-
-                        state->remote           = remote;
-                        state->remote_connected = true;
-                        state->connecting       = false;
-
-                        co_await aconn_write(aconn, SESSION_OK,
-                                             build_uuid_body(state->uuid));
-
-                        // Drain arrival buffer
-                        for (auto& buf : state->arrival_buffer) {
-                            co_await asio::async_write(*remote, asio::buffer(buf),
-                                                       use_awaitable);
-                        }
-                        state->arrival_buffer.clear();
-
-                        // Pump: read raw from remote → send DATA to A
-                        std::array<Byte, 65536> buf;
-                        try {
-                            while (!state->closed) {
-                                boost::system::error_code ec2;
-                                auto n = co_await remote->async_read_some(
-                                    asio::buffer(buf),
-                                    redirect_error(use_awaitable, ec2));
-                                if (ec2 == asio::error::eof || n == 0) {
-                                    state->half_close_send = true;
-                                    co_await aconn_write(aconn, DATA_EOF,
-                                        build_uuid_body(state->uuid));
-                                    if (state->half_close_recv)
-                                        state->closed = true;
-                                    break;
-                                }
-                                if (ec2) {
-                                    co_await aconn_write(aconn, SESSION_CLOSE,
-                                        build_uuid_body(state->uuid));
-                                    state->closed = true;
-                                    break;
-                                }
-                                co_await aconn_write(
-                                    aconn, DATA,
-                                    build_uuid_data_body(state->uuid, buf.data(), n));
+                            if (ec) {
+                                spdlog::warn("relay C: connect target failed {}: {}",
+                                             state->uuid,
+                                             ec.message());
+                                co_await aconn_write(aconn,
+                                                     SESSION_ERR,
+                                                     build_uuid_body(state->uuid));
+                                state->closed = true;
+                                sessions->erase(state->uuid);
+                                co_return;
                             }
-                        } catch (...) {
-                            co_await aconn_write(aconn, SESSION_CLOSE,
-                                                 build_uuid_body(state->uuid));
-                            state->closed = true;
-                        }
 
-                        sessions->erase(state->uuid);
-                    },
-                    detached);
-                break;
-            }
+                            state->remote           = remote;
+                            state->remote_connected = true;
+                            state->connecting       = false;
 
-            case DATA: {
-                if (frame.body.size() < UUID_BYTES)
-                    break;
-                auto uuid = std::string(frame.body.begin(),
-                                        frame.body.begin() + UUID_BYTES);
-                auto data_len = frame.body.size() - UUID_BYTES;
-                auto it = sessions->find(uuid);
-                if (it == sessions->end())
-                    break;
-                auto& s = it->second;
-                if (s->closed)
-                    break;
+                            co_await aconn_write(aconn, SESSION_OK, build_uuid_body(state->uuid));
 
-                if (s->remote_connected) {
-                    co_await asio::async_write(
-                        *s->remote,
-                        asio::buffer(frame.body.data() + UUID_BYTES, data_len),
-                        use_awaitable);
-                } else if (s->connecting) {
-                    s->arrival_buffer.emplace_back(
-                        frame.body.begin() + UUID_BYTES, frame.body.end());
+                            // Drain arrival buffer
+                            for (auto& buf : state->arrival_buffer) {
+                                co_await asio::async_write(*remote,
+                                                           asio::buffer(buf),
+                                                           use_awaitable);
+                            }
+                            state->arrival_buffer.clear();
+
+                            // If DATA_EOF arrived before remote connected, propagate
+                            if (state->half_close_recv) {
+                                boost::system::error_code ec3;
+                                state->remote->shutdown(tcp::socket::shutdown_send, ec3);
+                            }
+
+                            // Pump: read raw from remote → send DATA to A
+                            std::array<Byte, 65536> buf;
+                            try {
+                                while (!state->closed) {
+                                    boost::system::error_code ec2;
+                                    auto                      n = co_await remote->async_read_some(
+                                        asio::buffer(buf),
+                                        redirect_error(use_awaitable, ec2));
+                                    if (ec2 == asio::error::eof || n == 0) {
+                                        state->half_close_send = true;
+                                        co_await aconn_write(aconn,
+                                                             DATA_EOF,
+                                                             build_uuid_body(state->uuid));
+                                        if (state->half_close_recv)
+                                            state->closed = true;
+                                        break;
+                                    }
+                                    if (ec2) {
+                                        co_await aconn_write(aconn,
+                                                             SESSION_CLOSE,
+                                                             build_uuid_body(state->uuid));
+                                        state->closed = true;
+                                        break;
+                                    }
+                                    co_await aconn_write(
+                                        aconn,
+                                        DATA,
+                                        build_uuid_data_body(state->uuid, buf.data(), n));
+                                }
+                            } catch (...) {
+                                co_await aconn_write(aconn,
+                                                     SESSION_CLOSE,
+                                                     build_uuid_body(state->uuid));
+                                state->closed = true;
+                            }
+
+                            sessions->erase(state->uuid);
+                        },
+                        detached);
+                    break;
                 }
-                break;
-            }
 
-            case DATA_EOF: {
-                auto uuid = std::string(frame.body.begin(), frame.body.end());
-                auto it = sessions->find(uuid);
-                if (it == sessions->end())
+                case DATA: {
+                    if (frame.body.size() < UUID_BYTES)
+                        break;
+                    auto uuid = std::string(frame.body.begin(), frame.body.begin() + UUID_BYTES);
+                    auto data_len = frame.body.size() - UUID_BYTES;
+                    auto it       = sessions->find(uuid);
+                    if (it == sessions->end())
+                        break;
+                    auto& s = it->second;
+                    if (s->closed)
+                        break;
+
+                    if (s->remote_connected) {
+                        co_await asio::async_write(
+                            *s->remote,
+                            asio::buffer(frame.body.data() + UUID_BYTES, data_len),
+                            use_awaitable);
+                    } else if (s->connecting) {
+                        s->arrival_buffer.emplace_back(frame.body.begin() + UUID_BYTES,
+                                                       frame.body.end());
+                    }
                     break;
-                auto& s = it->second;
-                s->half_close_recv = true;
-                if (s->remote_connected) {
-                    boost::system::error_code ec;
-                    s->remote->shutdown(tcp::socket::shutdown_send, ec);
                 }
-                if (s->half_close_send) {
+
+                case DATA_EOF: {
+                    auto uuid = std::string(frame.body.begin(), frame.body.end());
+                    auto it   = sessions->find(uuid);
+                    if (it == sessions->end())
+                        break;
+                    auto& s            = it->second;
+                    s->half_close_recv = true;
+                    if (s->remote_connected) {
+                        boost::system::error_code ec;
+                        s->remote->shutdown(tcp::socket::shutdown_send, ec);
+                    }
+                    if (s->half_close_send) {
+                        s->closed = true;
+                        sessions->erase(it);
+                    }
+                    break;
+                }
+
+                case SESSION_CLOSE: {
+                    auto uuid = std::string(frame.body.begin(), frame.body.end());
+                    auto it   = sessions->find(uuid);
+                    if (it == sessions->end())
+                        break;
+                    auto& s   = it->second;
                     s->closed = true;
+                    if (s->remote) {
+                        boost::system::error_code ec;
+                        s->remote->close(ec);
+                    }
                     sessions->erase(it);
-                }
-                break;
-            }
-
-            case SESSION_CLOSE: {
-                auto uuid = std::string(frame.body.begin(), frame.body.end());
-                auto it = sessions->find(uuid);
-                if (it == sessions->end())
                     break;
-                auto& s = it->second;
-                s->closed = true;
-                if (s->remote) {
-                    boost::system::error_code ec;
-                    s->remote->close(ec);
                 }
-                sessions->erase(it);
-                break;
-            }
 
-            default:
-                break;
+                default:
+                    break;
             }
         }
     } catch (...) {
@@ -776,24 +791,21 @@ void run_node(std::string_view server_addr,
     try {
         temp_sock.connect(server_ep);
     } catch (const std::exception& e) {
-        spdlog::error("IDR: connect to {}:{} failed: {}",
-                      server_addr, server_port, e.what());
+        spdlog::error("IDR: connect to {}:{} failed: {}", server_addr, server_port, e.what());
         return;
     }
 
     // Build and send REGISTER frame
     std::string reg_str = std::string(id) + " " + std::string(1, role);
-    asio::write(temp_sock, asio::buffer(
-        build_frame_bytes(REGISTER, reg_str.data(), reg_str.size())));
+    asio::write(temp_sock,
+                asio::buffer(build_frame_bytes(REGISTER, reg_str.data(), reg_str.size())));
 
     // Wait for READY
     {
         std::array<Byte, 4> hdr;
         asio::read(temp_sock, asio::buffer(hdr));
-        uint32_t len = (static_cast<uint32_t>(hdr[0]) << 24)
-                       | (static_cast<uint32_t>(hdr[1]) << 16)
-                       | (static_cast<uint32_t>(hdr[2]) << 8)
-                       | static_cast<uint32_t>(hdr[3]);
+        uint32_t len = (static_cast<uint32_t>(hdr[0]) << 24) | (static_cast<uint32_t>(hdr[1]) << 16)
+                       | (static_cast<uint32_t>(hdr[2]) << 8) | static_cast<uint32_t>(hdr[3]);
         ByteVector payload(len);
         asio::read(temp_sock, asio::buffer(payload));
         if (payload.empty() || payload[0] != READY) {
@@ -805,7 +817,7 @@ void run_node(std::string_view server_addr,
     spdlog::info("IDR {}: registered id={}, ready", (role == 'B' ? "B" : "C"), id);
 
     // Create shared AConn with the connected socket
-    auto aconn = std::make_shared<AConn>(ctx);
+    auto aconn  = std::make_shared<AConn>(ctx);
     aconn->sock = std::move(temp_sock);
 
     if (role == 'B') {
